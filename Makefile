@@ -154,7 +154,7 @@ build/tests/test_q2k_matvec: tests/test_q2k_matvec.c $(LIB_OBJS)
 
 build/tests/%: tests/%.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CFLAGS_DEBUG) -o $@ $< $(LIB_OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS_DEBUG) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # ── Convenience targets ────────────────────────────────────────────────────
 test-packed: build/tests/test_packed_weights

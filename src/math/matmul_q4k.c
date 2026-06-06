@@ -38,11 +38,8 @@
 #if TN_HAS_AVX2 || TN_HAS_AVX512
 #  include <immintrin.h>
 #endif
-/* Use __builtin_prefetch for software prefetch — this is portable across
- * GCC and clang on all targets (x86, ARM, etc.) and avoids the need for
- * xmmintrin.h / _mm_prefetch which is x86-only and not available on macOS
- * ARM runners or non-SSE targets. */
-#define TN_PREFETCH_T1(addr) __builtin_prefetch((addr), 0, 2)
+/* TN_PREFETCH_T1 is defined in core/platform.h (included above via matmul_q4k.h).
+ * Uses __builtin_prefetch for portability across x86 and ARM (macOS M-series). */
 
 /* ── Q4_K constants ────────────────────────────────────────────────────────── */
 #define Q4K_SUPER   256
