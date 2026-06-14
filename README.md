@@ -11,16 +11,16 @@
 > ⚠️ **ALL CONTRIBUTORS AND AI AGENTS: READ [`GOLDEN_RULES.md`](GOLDEN_RULES.md) BEFORE TOUCHING ANY CODE.**
 > No hardcoding. Test after every change. Document at every step. No exceptions.
 
-A from-scratch, single-binary LLM inference engine in C (plus one C++ translation
-unit for chat templating), built to run Microsoft's
-[BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) ternary
-weights at maximum speed on commodity CPUs. It also runs **DeepSeek-V2-Lite-Chat**
-(MoE + MLA) directly from GGUF, and layers on a vision pipeline (SigLIP), agentic
-tool use, and RAG persistent memory.
+A from-scratch, single-binary LLM inference engine written in C, built to run
+Microsoft's [BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T)
+ternary weights at maximum speed on commodity CPUs. It also runs
+**DeepSeek-V2-Lite-Chat** (MoE + MLA) directly from GGUF, with a vision pipeline
+(SigLIP), agentic tool use, and RAG persistent memory. The long-term goal is to be
+**LLM-agnostic** — run any model that fits and executes on a CPU.
 
-**No GPU and no ML framework.** The engine itself needs no Python to build or run —
-the only Python in the repo is the offline model-conversion and benchmark tooling in
-[`tools/`](tools/).
+**No GPU and no ML framework.** Python is used today only for offline tooling —
+model conversion, development, and testing (see [`tools/`](tools/)); the engine
+itself needs no Python to build or run, and the final product targets zero Python.
 
 ---
 

@@ -175,6 +175,23 @@ Run the engine on your hardware and add your result: [Discussion #3](https://git
 
 ---
 
+## 🎯 Language & Dependency Goals
+
+The engine is written in C. Two deliberate, **temporary** deviations from the
+"pure C, zero-Python" target are tracked here for cleanup so the stated identity and
+the tree stay consistent:
+
+| Item | Current state | Target |
+|------|---------------|--------|
+| **Chat templating** | `src/tokenizer/chat_template.cpp` is the one C++17 translation unit in the engine | Port to C so the engine is 100% C |
+| **Python tooling** | `tools/*.py` handle offline model conversion, benchmarking, and fuzz/test harnesses — used for development and testing only | Final product ships with **no Python**; the runtime already needs none to build or run |
+
+The broader direction is to make the engine **LLM-agnostic** — run any architecture
+that fits and executes on a CPU — through the GGUF reader and the planned
+architecture routers (Phases 35 and 22).
+
+---
+
 ## Architecture References
 
 | Document | Contents |
