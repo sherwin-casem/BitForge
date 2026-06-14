@@ -37,7 +37,7 @@ flowchart LR
     A --> H["❌ Speculative\nDecoding Ph.18"]
     A --> I["❌ LoRA Ph.19"]
     A --> J["❌ Grammar Ph.20"]
-    A --> K["❌ OpenAI API Ph.21"]
+    A --> K["🔄 OpenAI API Ph.21\n(partial)"]
 ```
 
 ---
@@ -124,7 +124,7 @@ Verified on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-S
 
 ## Planned Phases (17–36)
 
-These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, struct definitions, and function signatures. Not yet started.
+These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, struct definitions, and function signatures. Not yet started — **except Phase 21, which is partially implemented** (see the note below the table).
 
 | Phase | Feature | Depends on | Skill needed |
 |-------|---------|------------|--------------|
@@ -132,7 +132,7 @@ These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, str
 | **18** | Speculative decoding — draft model + verification loop | Phase 6 | C, transformer math |
 | **19** | LoRA adapters — hot-swappable, low-rank merge at inference | Phase 6 | C, linear algebra |
 | **20** | Grammar-constrained decoding — FSM, JSON mode, BNF parser | Phase 7 | C, automata theory |
-| **21** | OpenAI-compatible API layer — `/v1/chat/completions`, streaming | Phase 12 | C, HTTP/SSE |
+| **21** 🔄 | OpenAI-compatible API layer — `/v1/chat/completions`, streaming | Phase 12 | C, HTTP/SSE |
 | **22** | State Space Models — Mamba/RWKV architecture router | Phase 6 | C, SSM math |
 | **23** | PagedAttention + continuous batching | Phase 8 | C, memory management |
 | **24** | Dynamic context scaling — YaRN/NTK RoPE extension | Phase 6 | C, RoPE math |
@@ -146,6 +146,15 @@ These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, str
 | **32** | Test-Time Training (TTT) — runtime weight adaptation | Phase 6 | C, autograd lite |
 | **33** | Output watermarking — undetectable statistical signature | Phase 7 | C, probability theory |
 | **36** | Text-to-image — Stable Diffusion / Flux (DDIM scheduler, U-Net, VAE) | Phase 35 | C, diffusion math, image I/O |
+
+> **🔄 Phase 21 (OpenAI-compatible API) — partially implemented.** `src/api/` ships a
+> working loopback HTTP server behind `--server`/`--port`, serving `POST /v1/chat/completions`
+> (streaming + non-streaming SSE), `GET /v1/models`, and `GET /health` with real model
+> inference. **Remaining before it can be marked ✅:** concurrent request handling (the
+> listener is currently serial, one connection at a time), optional non-loopback bind,
+> socket-level integration tests, and CI coverage — the existing tests
+> (`tests/test_api_server.c`) cover only the JSON/chat-template/SSE logic, not the socket
+> server. It is also not yet documented in the README.
 
 ---
 

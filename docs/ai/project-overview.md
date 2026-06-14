@@ -7,8 +7,8 @@
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
 **BitNet b1.58 ternary weights** and **DeepSeek-V2** architecture (MoE + MLA attention),
-plus an OpenAI-compatible HTTP API layer. Goal: high single-machine CPU throughput with
-SIMD-tuned kernels, no GPU.
+plus a **partial** OpenAI-compatible HTTP API layer (Phase 21 — see below). Goal: high
+single-machine CPU throughput with SIMD-tuned kernels, no GPU.
 
 ## Stack & key dependencies
 - **Languages:** C99 (engine). One **temporary** C++17 translation unit
@@ -71,7 +71,11 @@ release/test) and `.github/workflows/security_audit.yml` (cmake+ASan/UBSan + `to
 ## Major integration boundaries
 - **GGUF metadata** drives config, tokenizer, and quant types — *not* hardcoded constants.
 - **Runtime SIMD dispatch** (`src/math/simd_dispatch.c`, `cpu_features.c`) selects kernels.
-- **HTTP API** (`src/api/`) exposes the engine; mirrors OpenAI chat schema.
+- **HTTP API** (`src/api/`) exposes the engine; mirrors OpenAI chat schema. **Partial
+  (Phase 21, experimental):** `--server`/`--port` serve `POST /v1/chat/completions`
+  (streaming + non-streaming SSE), `GET /v1/models`, `GET /health` with real inference,
+  but the listener handles connections serially, binds loopback-only, and the socket
+  layer is untested/not in CI. Logic-level tests in `tests/test_api_server.c`.
 - **Conversion tools** (`tools/convert_*`, `import_model.py`) bridge HuggingFace → engine formats.
 
 ## Reference reports

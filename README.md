@@ -498,6 +498,47 @@ You will see `[Memory] Duplicate detected — entry not saved.`
 
 ---
 
+## HTTP API Server (Phase 21 — experimental)
+
+The engine can serve an **OpenAI-compatible HTTP API** for chat completions. This layer
+is **partially implemented**: it works for single-client local use, but is not yet a
+production server (see limitations below).
+
+```bash
+./adaptive_ai_engine \
+  --model models/bitnet-b1.58-2B-4T.bin \
+  --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
+  --server --port 8080
+```
+
+```bash
+# Non-streaming chat completion
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Capital of France?"}],"max_tokens":16}'
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/chat/completions` | Chat completion — streaming (SSE) and non-streaming |
+| `GET`  | `/v1/models` | List the loaded model |
+| `GET`  | `/health` | Liveness probe — `{"status":"ok"}` |
+
+### Limitations (why it is experimental)
+
+- **Loopback only** — binds `127.0.0.1`; not exposed to the network by design.
+- **Serial** — a single listener thread handles one connection at a time (no concurrency
+  or continuous batching yet).
+- **No auth** and a minimal endpoint set (no `/v1/completions`, `/v1/embeddings`).
+- **Socket layer is untested in CI** — `tests/test_api_server.c` covers the JSON parser,
+  chat-template compiler, and SSE formatter, not the running server.
+
+Tracking and remaining work: [`.github/ROADMAP.md`](.github/ROADMAP.md) → Phase 21.
+
+---
+
 ## REPL Slash Commands (all phases)
 
 All commands available at the interactive `>` prompt. Any input **without** a `/` prefix is treated as a plain prompt and sent to the model.
