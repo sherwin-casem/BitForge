@@ -55,7 +55,7 @@ Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than M
 </p>
 
 <p align="center">
-  <img src="docs/bar_comparison_i5.png" width="420" alt="Peak throughput bar chart: PZ INT4 42.83, PZ BF16 28.11, MSFT 6.73 tok/s">
+  <img src="docs/bar_chart_i5.png" width="640" alt="Peak throughput bar chart: PZ INT4 42.83, PZ BF16 28.11, MSFT 6.73 tok/s">
 </p>
 
 ### Intel Xeon · AVX-512 VNNI (PGO+LTO, from earlier run)
