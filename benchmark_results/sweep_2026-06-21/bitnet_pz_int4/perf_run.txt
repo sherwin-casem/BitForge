@@ -1,0 +1,85 @@
+=== PERF RUN: bitnet_pz_int4  t=4 ===
+DATE: 2026-06-21 17:31:50.333817
+CMD: /usr/bin/time -v /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier int4
+============================================================
+Project Zero Engine v0.1.0-14-g3d70181 — Auto-Tuned Hardware
+SIMD: avx512f (calibrated optimal)
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 8 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1280   KiB per core                 │
+│ L3 cache      : 8      MiB shared                   │
+│ Free RAM      : 11318  MiB                          │
+│ DRAM bandwidth: 10.3   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB                           │
+│ Ceiling       : 14.4   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | INT4 cls | 4T | 10.3 GB/s | ceiling 14 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+ 
+
+**Solution:**
+
+Machine learning is a type of artificial intelligence that allows computers to learn from data without being explicitly programmed. 
+
+**Solution:**
+
+Machine learning is a type of artificial intelligence that enables computers to learn from data. 
+
+Machine learning is a type of artificial intelligence that allows computers to learn from data. 
+
+**Solution:**
+
+Machine learning is a type of artificial intelligence that can be used for data. 
+
+In this article, we will be used for data. Machine learning. 
+
+I am learning. Machine learning. Machine learning. Machine learning. Machine learning. Machine learning. Machine learning. Machine learning. Machine learning. Machine Learning. Machine learning. Machine learning. Machine. Learning. Machine. Learning. Machine. Machine Learning. Machine. Learning. Machine. Learning. Machine. Machine. Learning. Machine. Learning. It. However, Machine. Machine. Machine. Machine. It. Machine. Machine. Machine. However, Machine. Machine learning. It is. Machine. Machine learning. Machine. Learning. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine. Machine
+
+
+[gen] 35.59 tok/s (501 tokens)
+	Command being timed: "/home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier int4"
+	User time (seconds): 62.66
+	System time (seconds): 0.89
+	Percent of CPU this job got: 366%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:17.33
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 2261012
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 818690
+	Voluntary context switches: 22
+	Involuntary context switches: 749
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

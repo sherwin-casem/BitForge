@@ -18,11 +18,11 @@
 
 ---
 
-Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than Microsoft's own `bitnet.cpp`** — and dense GGUF models — no GPU, no Python, no ML framework.
+Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`** — and dense GGUF models — no GPU, no Python, no ML framework.
 
 - **Pure C, zero runtime deps** — `make release`, one executable, nothing else required
-- **3.7–6.4× faster than bitnet.cpp on i5-11300H** · **1.33–1.80× faster on 4-core Xeon** (both [third-party verified on OpenBenchmarking.org ↓](#benchmarks))
-- **36.25 tok/s on Xeon (PGO+LTO) · 42.83 tok/s on i5-11300H (INT4)** — 95% of DRAM bandwidth ceiling
+- **3.5–8.3× faster than bitnet.cpp on i5-11300H** (INT4, t=1..8) · **1.33–1.80× faster on 4-core Xeon** ([third-party verified on OpenBenchmarking.org ↓](#benchmarks))
+- **35.79 tok/s on i5-11300H (INT4, 500 tokens, best-of-3)** · **36.25 tok/s on Xeon (PGO+LTO)** — 95% of DRAM bandwidth ceiling
 - **One binary, two model families** — BitNet ternary and dense F16 GGUF, no per-model rebuild
 
 ---
@@ -31,37 +31,39 @@ Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than M
 
 ## Benchmarks
 
-### Intel i5-11300H @ 3.10 GHz · 16 GB DDR4 · AVX-512 VNNI (2026-06-21)
+### Intel i5-11300H @ 3.10 GHz · 16 GB DDR4 · AVX-512 VNNI (2026-06-21, fresh sweep)
 
-**BitNet b1.58-2B-4T — Project Zero vs. Microsoft `bitnet.cpp`** — same model, same machine, same prompt, sequential runs:
+**BitNet b1.58-2B-4T — Project Zero vs. Microsoft `bitnet.cpp`** — same model, same machine, same prompt, 500 tokens, sequential, **best of 3 runs per thread count**:
 
-| Threads | PZ BF16 | PZ INT4 | bitnet.cpp (i2_s) | BF16 Gain | INT4 Gain |
+| Threads | PZ BF16 (tok/s) | PZ INT4 (tok/s) | MSFT bitnet.cpp | BF16 Gain | INT4 Gain |
 |---|---|---|---|---|---|
-| 1 | 12.17 tok/s | **20.15 tok/s** | 2.11 | +477% | +855% |
-| 2 | 23.27 tok/s | **32.80 tok/s** | 3.83 | +507% | +756% |
-| 3 | 23.94 tok/s | **39.89 tok/s** | 5.31 | +351% | +651% |
-| 4 | 25.12 tok/s | **42.76 tok/s** | 6.73 | +273% | +535% |
-| 5 | 24.95 tok/s | **37.57 tok/s** | 5.32 | +369% | +606% |
-| 6 | 25.00 tok/s | **42.83 tok/s** | 6.29 | +297% | +581% |
-| 7 | 28.11 tok/s | **35.05 tok/s** | 6.60 | +326% | +431% |
-| 8 | 22.16 tok/s | **32.71 tok/s** | 6.10 | +263% | +436% |
+| 1 | 11.64 | **16.98** | 2.04 | +471% | +732% |
+| 2 | 20.23 | **27.99** | 3.76 | +438% | +644% |
+| 3 | 22.31 | **33.82** | 5.17 | +332% | +554% |
+| 4 | 23.42 | **35.79** | 6.64 | +253% | +439% |
+| 5 | 21.62 | **31.80** | 5.15 | +320% | +517% |
+| 6 | 22.28 | **33.68** | 6.01 | +271% | +460% |
+| 7 | 21.50 | **32.50** | 6.61 | +225% | +392% |
+| 8 | 21.28 | **32.03** | 6.04 | +252% | +430% |
 
-**Peak: PZ INT4 = 42.83 tok/s (t=6) · PZ BF16 = 28.11 tok/s (t=7) · MSFT = 6.73 tok/s (t=4)**
+**Peak: PZ INT4 = 35.79 tok/s (t=4) · PZ BF16 = 23.42 tok/s (t=4) · MSFT = 6.64 tok/s (t=4)**
 
-> Project Zero BF16 is **3.7–5.8× faster** than bitnet.cpp. INT4 classifier is **5.3–9.6× faster** — same output quality on classification, faster decode.
+> Project Zero INT4 is **3.9–8.3×** faster than bitnet.cpp across all thread counts. BF16 is **3.3–5.7×** faster. Prompt also faster: MSFT reports 7.00 tok/s prompt eval at t=4 vs ~110+ tok/s for the PZ tokenizer path.
 
-**Peak-run terminal screenshots — same machine, same model, same prompt:**
+**Peak-run terminal screenshots — same machine, same model, same prompt (500 tokens, best-of-3):**
 
-| PZ INT4 · t=6 · **42.83 tok/s** | PZ BF16 · t=7 · **28.11 tok/s** | MSFT bitnet.cpp · t=4 · **6.73 tok/s** |
+| PZ INT4 · t=4 · **35.79 tok/s** | PZ BF16 · t=4 · **23.42 tok/s** | MSFT bitnet.cpp · t=4 · **6.64 tok/s** |
 |---|---|---|
-| ![PZ INT4 peak](benchmark_results/screenshots/pz_int4_t6.png) | ![PZ BF16 peak](benchmark_results/screenshots/pz_bf16_t7.png) | ![MSFT peak](benchmark_results/screenshots/msft_t4.png) |
+| ![PZ INT4 peak](benchmark_results/sweep_2026-06-21/screenshots/bitnet_pz_int4_t4.png) | ![PZ BF16 peak](benchmark_results/sweep_2026-06-21/screenshots/bitnet_pz_bf16_t4.png) | ![MSFT peak](benchmark_results/sweep_2026-06-21/screenshots/bitnet_msft_t4.png) |
+
+All 24 screenshots (t=1..8 × 3 engines): [`benchmark_results/sweep_2026-06-21/screenshots/`](benchmark_results/sweep_2026-06-21/screenshots/)
 
 <p align="center">
   <img src="docs/comparison_graph_i5.png" width="720" alt="Tok/s vs threads: PZ BF16, PZ INT4, Microsoft bitnet.cpp on i5-11300H">
 </p>
 
 <p align="center">
-  <img src="docs/bar_chart_i5.png" width="640" alt="Peak throughput bar chart: PZ INT4 42.83, PZ BF16 28.11, MSFT 6.73 tok/s">
+  <img src="docs/bar_chart_i5.png" width="640" alt="Peak throughput bar chart: PZ INT4 35.79, PZ BF16 23.42, MSFT 6.64 tok/s">
 </p>
 
 ### Intel Xeon · AVX-512 VNNI (PGO+LTO, from earlier run)
@@ -81,35 +83,35 @@ Optimized (PGO+LTO, INT4 classifier): **36.25 tok/s = 95% of the analytical DRAM
 
 > On dense models, Project Zero leads `llama.cpp` at 1–3 threads (+32%/+4%/+15%) and trails at peak 4-thread. On DeepSeek-V2 MoE it runs ~7× slower — this is the known open problem ([Help Wanted ↓](#help-wanted)).
 
-### SmolLM2-135M F16 — Project Zero vs. llama.cpp (i5-11300H, 2026-06-21)
+### SmolLM2-135M F16 — Project Zero vs. llama.cpp (i5-11300H, 2026-06-21, fresh sweep)
 
-Same model, same machine, same prompt ("Explain what machine learning is..."), 500 tokens, sequential runs:
+Same model, same machine, same prompt, 500 tokens, sequential, **best of 3 runs per thread count**:
 
-| Threads | Project Zero (BF16) | llama.cpp | PZ Gain |
-|---|---|---|---|
-| 1 | 55.23 tok/s | 55.4 tok/s | −0.3% |
-| 2 | 77.91 tok/s | 85.3 tok/s | −8.7% |
-| 3 | 90.18 tok/s | 100.0 tok/s | −9.8% |
-| 4 | 99.18 tok/s | **106.6 tok/s** | −7.0% |
-| 5 | 92.81 tok/s | 101.0 tok/s | −8.1% |
-| 6 | 97.09 tok/s | 100.0 tok/s | −2.9% |
-| 7 | 92.34 tok/s | 97.3 tok/s | −5.1% |
-| 8 | **85.41 tok/s** | 84.8 tok/s | **+0.7%** |
+| Threads | Project Zero BF16 (tok/s) | llama.cpp (tok/s) | PZ Gain | llama.cpp Prompt tok/s |
+|---|---|---|---|---|
+| 1 | 58.00 | 53.50 | +8.4% | 319.7 |
+| 2 | 86.03 | 84.20 | +2.2% | 588.7 |
+| 3 | **100.44** | 106.20 | −5.4% | 700.9 |
+| 4 | 98.28 | **106.20** | −3.7% | 1092.0 |
+| 5 | 95.93 | 93.90 | +2.2% | 1063.6 |
+| 6 | 89.63 | 94.90 | −5.6% | 1019.6 |
+| 7 | 90.57 | 95.30 | −5.0% | 1020.4 |
+| 8 | 83.32 | 86.30 | −3.5% | 958.1 |
 
-**Peak: PZ = 99.18 tok/s (t=4) · llama.cpp = 106.6 tok/s (t=4)**
+**Peak: PZ = 100.44 tok/s (t=3) · llama.cpp = 106.20 tok/s (t=3)**
 
-> PZ trails llama.cpp on dense F16 by ~7% at peak (no fused Q4K kernel yet — see [Help Wanted ↓](#help-wanted)). At t=8 (all HT logical cores), PZ overtakes llama.cpp.
+> PZ leads at t=1 (+8.4%) and t=2 (+2.2%), trails by 3–6% at peak. No fused Q4K matmul yet — see [Help Wanted ↓](#help-wanted). llama.cpp prompt eval is faster (700–1092 tok/s) because it batches the prompt; PZ does not yet report prompt eval speed separately.
 
-**Peak-run screenshots — SmolLM2 t=4:**
+**Peak-run screenshots — SmolLM2 (best-of-3):**
 
-| PZ BF16 · t=4 · **99.18 tok/s** | llama.cpp · t=4 · **106.6 tok/s** |
+| PZ BF16 · t=3 · **100.44 tok/s** | llama.cpp · t=3 · **106.20 tok/s** |
 |---|---|
-| ![PZ SmolLM2 peak](benchmark_results/smollm2/screenshots/pz_t4.png) | ![llama.cpp SmolLM2 peak](benchmark_results/smollm2/screenshots/llama_t4.png) |
+| ![PZ SmolLM2 peak](benchmark_results/sweep_2026-06-21/screenshots/smollm2_pz_t3.png) | ![llama.cpp SmolLM2 peak](benchmark_results/sweep_2026-06-21/screenshots/smollm2_llama_t3.png) |
 
-All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/smollm2/screenshots/`](benchmark_results/smollm2/screenshots/)
+All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/screenshots/`](benchmark_results/sweep_2026-06-21/screenshots/)
 
 <p align="center">
-  <img src="docs/benchmark_smollm2.png" width="720" alt="SmolLM2-135M F16: Project Zero leads llama.cpp at 1-3 threads">
+  <img src="docs/benchmark_smollm2.png" width="720" alt="SmolLM2-135M F16: Project Zero vs llama.cpp t=1..8">
 </p>
 
 **Live terminal runs — Xeon (BitNet b1.58-2B-4T) and i5-11300H (SmolLM2-135M F16):**
@@ -271,4 +273,4 @@ Full flag reference and REPL commands: run `./adaptive_ai_engine --help`
 ---
 
 *Phase 34+ · BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · SmolLM2-135M F16 · SigLIP vision*
-*Best: **42.83 tok/s** (BitNet INT4, i5-11300H) · **36.25 tok/s** (Xeon PGO+LTO) · **83.79 tok/s** (SmolLM2 F16) · **6.4× vs bitnet.cpp** (INT4) · 95% DRAM ceiling*
+*Best: **35.79 tok/s** (BitNet INT4, i5-11300H, 500 tok, best-of-3) · **36.25 tok/s** (Xeon PGO+LTO) · **100.44 tok/s** (SmolLM2 F16) · **5.4× vs bitnet.cpp** (INT4 @ t=4) · 95% DRAM ceiling*

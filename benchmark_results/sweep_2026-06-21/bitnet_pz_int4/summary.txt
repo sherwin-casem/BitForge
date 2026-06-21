@@ -1,0 +1,15 @@
+Suite: bitnet_pz_int4
+Date: 2026-06-21 16:21:54.305744
+Prompt: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+Max tokens: 500  |  Runs per thread: 3
+
+t     best_gen (tok/s)      best_prompt (tok/s)     all_gen_runs
+--------------------------------------------------------------------------------
+1     16.98                 N/A                     [16.79, 16.8, 16.98]
+2     27.99                 N/A                     [27.61, 27.82, 27.99]
+3     33.82                 N/A                     [33.41, 33.82, 33.72]
+4     35.79                 N/A                     [35.55, 35.79, 35.71]
+5     31.80                 N/A                     [31.8, 31.69, 31.47]
+6     33.68                 N/A                     [33.56, 33.46, 33.68]
+7     32.50                 N/A                     [32.5, 31.72, 32.3]
+8     32.03                 N/A                     [31.68, 31.78, 32.03]

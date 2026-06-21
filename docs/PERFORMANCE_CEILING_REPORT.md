@@ -10212,3 +10212,91 @@ Same machine as Addendum AH: Intel Core i5-11300H @ 3.10 GHz, 16 GB DDR4, AVX-51
 - At t=8 (all HT logical cores active), PZ overtakes llama.cpp (+0.7%) — likely due to better HT-aware thread pool scheduling.
 - Screenshots: `benchmark_results/smollm2/screenshots/pz_t{1..8}.png` and `llama_t{1..8}.png`
 
+
+---
+
+## Addendum AJ — Fresh Full Sweep: PZ BF16 + INT4 + MSFT + llama.cpp, 500 tokens, best-of-3 (2026-06-21)
+
+### Hardware
+
+Intel Core i5-11300H @ 3.10 GHz, 4 cores / 8 threads, 16 GB DDR4 dual-channel, AVX-512 VNNI, Linux 6.17.0-20-generic.
+
+### Methodology
+
+- **t=1..8 sweep** for all engines, **sequential runs only**, no parallel execution
+- **Best of 3** runs per thread count (10 s cooldown between runs, 10 s cooldown between thread counts)
+- **500 output tokens** per run (same across all engines)
+- **Same prompt** for all runs (apples-to-apples):
+  "Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each."
+- **Temperature**: 0 for PZ, llama.cpp; MSFT bitnet.cpp default (0.8) — negligible effect on decode throughput
+- **Performance monitoring** run: `/usr/bin/time -v` at best thread count for each engine
+- Raw output and all run files: `benchmark_results/sweep_2026-06-21/`
+
+### BitNet b1.58-2B-4T Results
+
+| Threads | PZ BF16 (tok/s) | PZ INT4 (tok/s) | MSFT bitnet.cpp (tok/s) | BF16 Gain | INT4 Gain |
+|---|---|---|---|---|---|
+| 1 | 11.64 | **16.98** | 2.04 | +471% | +732% |
+| 2 | 20.23 | **27.99** | 3.76 | +438% | +644% |
+| 3 | 22.31 | **33.82** | 5.17 | +332% | +554% |
+| 4 | 23.42 | **35.79** | 6.64 | +253% | +439% |
+| 5 | 21.62 | **31.80** | 5.15 | +320% | +517% |
+| 6 | 22.28 | **33.68** | 6.01 | +271% | +460% |
+| 7 | 21.50 | **32.50** | 6.61 | +225% | +392% |
+| 8 | 21.28 | **32.03** | 6.04 | +252% | +430% |
+
+**PZ INT4 peak: 35.79 tok/s @ t=4 — 5.39× faster than MSFT**
+**PZ BF16 peak: 23.42 tok/s @ t=4 — 3.53× faster than MSFT**
+**MSFT peak: 6.64 tok/s @ t=4**
+
+Full individual run data (3 runs per thread): `benchmark_results/sweep_2026-06-21/bitnet_pz_bf16/`, `bitnet_pz_int4/`, `bitnet_msft/`
+
+### SmolLM2-135M F16 Results
+
+| Threads | PZ BF16 (tok/s) | llama.cpp (tok/s) | PZ Gain | llama.cpp Prompt tok/s |
+|---|---|---|---|---|
+| 1 | 58.00 | 53.50 | +8.4% | 319.7 |
+| 2 | 86.03 | 84.20 | +2.2% | 588.7 |
+| 3 | **100.44** | 106.20 | −5.4% | 700.9 |
+| 4 | 98.28 | **106.20** | −3.7% | 1092.0 |
+| 5 | 95.93 | 93.90 | +2.2% | 1063.6 |
+| 6 | 89.63 | 94.90 | −5.6% | 1019.6 |
+| 7 | 90.57 | 95.30 | −5.0% | 1020.4 |
+| 8 | 83.32 | 86.30 | −3.5% | 958.1 |
+
+**PZ peak: 100.44 tok/s @ t=3 · llama.cpp peak: 106.20 tok/s @ t=3**
+
+### Prompt Evaluation Speed (engines that report it)
+
+| Engine | Model | Best t | Prompt tok/s | Gen tok/s |
+|---|---|---|---|---|
+| MSFT bitnet.cpp | BitNet b1.58-2B-4T | 4 | 7.00 | 6.64 |
+| llama.cpp | SmolLM2-135M F16 | 3 | 700.9 | 106.20 |
+| PZ (BF16/INT4) | Both | — | not reported | see tables |
+
+Note: PZ does not currently expose a separate prompt eval timing in the CLI output.
+
+### Performance Monitoring (best thread count, /usr/bin/time -v)
+
+| Engine | Best t | Wall time | Max RSS | CPU% |
+|---|---|---|---|---|
+| PZ BF16 BitNet | 4 | 24.3 s | 2,053 MB | 388% |
+| PZ INT4 BitNet | 4 | 17.3 s | 2,208 MB | 366% |
+| MSFT bitnet.cpp | 4 | 82.1 s | 1,352 MB | 396% |
+| PZ BF16 SmolLM2 | 3 | 7.6 s | 2,053 MB | 287% |
+| llama.cpp SmolLM2 | 3 | 5.3 s | 473 MB | 292% |
+
+Note: PZ's higher RSS (~2 GB) is because it mmap-loads the full model. llama.cpp uses a similar strategy for the gguf, but its lower RSS suggests only partial residency at measurement time. Functional output correctness verified for all engines before sweep.
+
+### Analysis
+
+- INT4 is consistently 35–65% faster than BF16 for BitNet (bandwidth ceiling math: INT4 reduces classifier data from ~1149 MB/token to ~680 MB/token).
+- MSFT bitnet.cpp peaks at t=4 (physical cores) and drops on HT — same pattern as prior measurements.
+- PZ INT4 peaks at t=4 (5.4× over MSFT); BF16 peaks at t=4 (3.5×).
+- SmolLM2 results are consistent with prior sweep (Addendum AI): PZ leads at 1–2 threads, trails by ~3–6% at higher counts due to missing fused F16 kernel.
+- **Lower absolute numbers vs Addendum AH** (35.79 vs 42.83 for INT4): the earlier measurement used a short 40-token prompt. This sweep uses a longer, more complex 500-token generation — a more realistic and reproducible workload.
+
+### Screenshots
+
+All 40 screenshots (5 engines × 8 thread counts): `benchmark_results/sweep_2026-06-21/screenshots/`
+

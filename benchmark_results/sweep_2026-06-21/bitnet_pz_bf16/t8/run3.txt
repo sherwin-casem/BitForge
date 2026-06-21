@@ -1,0 +1,60 @@
+=== BITNET_PZ_BF16  t=8  run=3/3 ===
+DATE: 2026-06-21 16:09:15.639625
+CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0 --classifier bf16
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+Project Zero Engine v0.1.0-14-g3d70181 — Auto-Tuned Hardware
+SIMD: avx512f (calibrated optimal)
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 8 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1280   KiB per core                 │
+│ L3 cache      : 8      MiB shared                   │
+│ Free RAM      : 11369  MiB                          │
+│ DRAM bandwidth: 11.4   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.5    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 8 threads | AVX-512 VNNI | BF16 cls | 4T | 11.4 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+ 
+
+**Solution:**
+
+Machine learning is a subset of artificial intelligence that enables machines to learn from data and improve their performance over time. 
+
+**Solution:**
+
+Machine learning is a type of artificial intelligence that enables machines to learn from data. 
+
+Machine learning is a subset of artificial intelligence that allows machines to learn from data. 
+
+In this context, explain the different types of machine learning. Explain the different types of machine learning. Explain the different types of learning. Explain the different types of learning. Explain the different types of learning. Explain the different types of learning. Explain the different types of learning. Explain the different types of learning. Explain the different types of learning. Explain the different types of learning. Explain the learning. they are the learning. the different types of learning. 
+The machine learning. Explain the different types of learning. Explain the different types of learning. they are the different types of learning. Machine Learning. they are the different types of learning. Explain the different types of learning. Explain the different types of learning. they are the different types of the learning. 
+
+The different types of the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning. Explain the learning.Machine learning. The different types of the learning. Explain the learning. The different types of the learning. The different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different types of the different
+
+
+[gen] 21.19 tok/s (501 tokens)

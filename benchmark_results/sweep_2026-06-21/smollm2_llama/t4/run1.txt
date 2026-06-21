@@ -1,0 +1,61 @@
+=== SMOLLM2_LLAMA  t=4  run=1/3 ===
+DATE: 2026-06-21 17:25:03.226370
+CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --n-predict 500 --temp 0 --single-turn --simple-io
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+
+Loading model... 
+
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b1-58c81f7
+model      : SmolLM2-135M-Instruct-f16.gguf
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read               add a text file
+
+
+> Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. It's a method of training a machine to make accurate predictions or decisions based on patterns and relationships in data.
+
+**Supervised Learning:**
+
+Supervised learning is a type of machine learning where the algorithm learns from labeled data, where each example is associated with a specific target or class label. The algorithm is trained on a dataset of labeled data, and the goal is to learn a mapping between the input data and the corresponding target label.
+
+Here's a simple example of supervised learning:
+
+Imagine you're a teacher who wants to teach a class of students about a particular subject. The teacher collects data on the students' test scores, and the data is labeled with the correct answers. The teacher uses this data to train a machine learning model that can predict the correct answers for new, unseen data.
+
+For instance, if the teacher wants to teach a class of students about the concept of "weather," the teacher collects data on the students' temperature readings, and the data is labeled with the correct temperature readings. The teacher uses this data to train a machine learning model that can predict the correct temperature readings for new, unseen data.
+
+**Unsupervised Learning:**
+
+Unsupervised learning is a type of machine learning where the algorithm learns from unlabeled data, where the goal is to identify patterns or relationships in the data that are not necessarily associated with a target or class label.
+
+Here's a simple example of unsupervised learning:
+
+Imagine you're a detective who wants to find a missing person. The detective collects data on the missing person's phone numbers, and the data is labeled with the missing person's phone number. The data is not necessarily associated with a target or class label, but the data is used to train a machine learning model that can identify patterns in the data.
+
+For instance, if the detective wants to find a missing person, the data is labeled with the missing person's phone number, and the data is not necessarily associated with a target or class label. The machine learning model is trained on a dataset of missing person's phone numbers, and the goal is to identify patterns in the data that are not necessarily associated with a target or class label.
+
+**Reinforcement Learning:**
+
+Reinforcement learning is a type of machine learning where the algorithm learns by performing actions that maximize a reward function. The
+
+[ Prompt: 1086.7 t/s | Generation: 102.1 t/s ]
+
+Exiting...
+llama_memory_breakdown_print: | memory breakdown [MiB] | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - Host               |                  534 =   256 +     180 +      98                |

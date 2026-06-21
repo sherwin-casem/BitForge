@@ -1,0 +1,760 @@
+
+======================================================================
+  SUITE 1/5: bitnet_pz_bf16  t=[1, 2, 3, 4, 5, 6, 7, 8]  best-of-3  500 tok
+======================================================================
+
+[2026-06-21 15:53:55]  bitnet_pz_bf16  t=1  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=11.64 tok/s  prompt=None tok/s  (47.0s)
+  cooldown 10s ...
+
+[2026-06-21 15:54:52]  bitnet_pz_bf16  t=1  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=11.6 tok/s  prompt=None tok/s  (47.1s)
+  cooldown 10s ...
+
+[2026-06-21 15:55:49]  bitnet_pz_bf16  t=1  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=11.59 tok/s  prompt=None tok/s  (47.1s)
+
+  *** t=1  BEST gen=11.64 tok/s  prompt=None tok/s
+      all runs gen: [11.64, 11.6, 11.59]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 15:56:46]  bitnet_pz_bf16  t=2  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=20.23 tok/s  prompt=None tok/s  (27.9s)
+  cooldown 10s ...
+
+[2026-06-21 15:57:24]  bitnet_pz_bf16  t=2  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=19.52 tok/s  prompt=None tok/s  (28.5s)
+  cooldown 10s ...
+
+[2026-06-21 15:58:03]  bitnet_pz_bf16  t=2  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=18.82 tok/s  prompt=None tok/s  (29.7s)
+
+  *** t=2  BEST gen=20.23 tok/s  prompt=None tok/s
+      all runs gen: [20.23, 19.52, 18.82]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 15:58:43]  bitnet_pz_bf16  t=3  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.96 tok/s  prompt=None tok/s  (25.5s)
+  cooldown 10s ...
+
+[2026-06-21 15:59:18]  bitnet_pz_bf16  t=3  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=22.31 tok/s  prompt=None tok/s  (25.2s)
+  cooldown 10s ...
+
+[2026-06-21 15:59:53]  bitnet_pz_bf16  t=3  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=22.02 tok/s  prompt=None tok/s  (25.4s)
+
+  *** t=3  BEST gen=22.31 tok/s  prompt=None tok/s
+      all runs gen: [21.96, 22.31, 22.02]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:00:29]  bitnet_pz_bf16  t=4  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=23.04 tok/s  prompt=None tok/s  (24.4s)
+  cooldown 10s ...
+
+[2026-06-21 16:01:03]  bitnet_pz_bf16  t=4  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=23.41 tok/s  prompt=None tok/s  (24.3s)
+  cooldown 10s ...
+
+[2026-06-21 16:01:37]  bitnet_pz_bf16  t=4  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=23.42 tok/s  prompt=None tok/s  (24.0s)
+
+  *** t=4  BEST gen=23.42 tok/s  prompt=None tok/s
+      all runs gen: [23.04, 23.41, 23.42]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:02:11]  bitnet_pz_bf16  t=5  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.32 tok/s  prompt=None tok/s  (26.2s)
+  cooldown 10s ...
+
+[2026-06-21 16:02:48]  bitnet_pz_bf16  t=5  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.62 tok/s  prompt=None tok/s  (26.1s)
+  cooldown 10s ...
+
+[2026-06-21 16:03:24]  bitnet_pz_bf16  t=5  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.17 tok/s  prompt=None tok/s  (26.4s)
+
+  *** t=5  BEST gen=21.62 tok/s  prompt=None tok/s
+      all runs gen: [21.32, 21.62, 21.17]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:04:00]  bitnet_pz_bf16  t=6  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=22.09 tok/s  prompt=None tok/s  (25.5s)
+  cooldown 10s ...
+
+[2026-06-21 16:04:36]  bitnet_pz_bf16  t=6  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=22.28 tok/s  prompt=None tok/s  (25.1s)
+  cooldown 10s ...
+
+[2026-06-21 16:05:11]  bitnet_pz_bf16  t=6  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.9 tok/s  prompt=None tok/s  (25.5s)
+
+  *** t=6  BEST gen=22.28 tok/s  prompt=None tok/s
+      all runs gen: [22.09, 22.28, 21.9]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:05:46]  bitnet_pz_bf16  t=7  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.5 tok/s  prompt=None tok/s  (26.3s)
+  cooldown 10s ...
+
+[2026-06-21 16:06:23]  bitnet_pz_bf16  t=7  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.31 tok/s  prompt=None tok/s  (26.2s)
+  cooldown 10s ...
+
+[2026-06-21 16:06:59]  bitnet_pz_bf16  t=7  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=20.86 tok/s  prompt=None tok/s  (26.8s)
+
+  *** t=7  BEST gen=21.5 tok/s  prompt=None tok/s
+      all runs gen: [21.5, 21.31, 20.86]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:07:36]  bitnet_pz_bf16  t=8  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.28 tok/s  prompt=None tok/s  (26.3s)
+  cooldown 10s ...
+
+[2026-06-21 16:08:12]  bitnet_pz_bf16  t=8  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=20.74 tok/s  prompt=None tok/s  (26.9s)
+  cooldown 10s ...
+
+[2026-06-21 16:08:49]  bitnet_pz_bf16  t=8  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0 --classifier bf16
+  -> gen=21.19 tok/s  prompt=None tok/s  (26.4s)
+
+  *** t=8  BEST gen=21.28 tok/s  prompt=None tok/s
+      all runs gen: [21.28, 20.74, 21.19]
+  Summary -> /home/ubuntu/project-zero/benchmark_results/sweep_2026-06-21/bitnet_pz_bf16/summary.txt
+
+  *** SUITE DONE — 30s cooldown before next suite ***
+
+======================================================================
+  SUITE 2/5: bitnet_pz_int4  t=[1, 2, 3, 4, 5, 6, 7, 8]  best-of-3  500 tok
+======================================================================
+
+[2026-06-21 16:09:45]  bitnet_pz_int4  t=1  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=16.79 tok/s  prompt=None tok/s  (34.3s)
+  cooldown 10s ...
+
+[2026-06-21 16:10:29]  bitnet_pz_int4  t=1  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=16.8 tok/s  prompt=None tok/s  (34.2s)
+  cooldown 10s ...
+
+[2026-06-21 16:11:14]  bitnet_pz_int4  t=1  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=16.98 tok/s  prompt=None tok/s  (33.7s)
+
+  *** t=1  BEST gen=16.98 tok/s  prompt=None tok/s
+      all runs gen: [16.79, 16.8, 16.98]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:11:57]  bitnet_pz_int4  t=2  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=27.61 tok/s  prompt=None tok/s  (21.5s)
+  cooldown 10s ...
+
+[2026-06-21 16:12:29]  bitnet_pz_int4  t=2  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=27.82 tok/s  prompt=None tok/s  (21.5s)
+  cooldown 10s ...
+
+[2026-06-21 16:13:00]  bitnet_pz_int4  t=2  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=27.99 tok/s  prompt=None tok/s  (21.5s)
+
+  *** t=2  BEST gen=27.99 tok/s  prompt=None tok/s
+      all runs gen: [27.61, 27.82, 27.99]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:13:32]  bitnet_pz_int4  t=3  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=33.41 tok/s  prompt=None tok/s  (18.5s)
+  cooldown 10s ...
+
+[2026-06-21 16:14:00]  bitnet_pz_int4  t=3  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=33.82 tok/s  prompt=None tok/s  (18.2s)
+  cooldown 10s ...
+
+[2026-06-21 16:14:29]  bitnet_pz_int4  t=3  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=33.72 tok/s  prompt=None tok/s  (18.1s)
+
+  *** t=3  BEST gen=33.82 tok/s  prompt=None tok/s
+      all runs gen: [33.41, 33.82, 33.72]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:14:57]  bitnet_pz_int4  t=4  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=35.55 tok/s  prompt=None tok/s  (17.2s)
+  cooldown 10s ...
+
+[2026-06-21 16:15:24]  bitnet_pz_int4  t=4  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=35.79 tok/s  prompt=None tok/s  (17.1s)
+  cooldown 10s ...
+
+[2026-06-21 16:15:51]  bitnet_pz_int4  t=4  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=35.71 tok/s  prompt=None tok/s  (17.1s)
+
+  *** t=4  BEST gen=35.79 tok/s  prompt=None tok/s
+      all runs gen: [35.55, 35.79, 35.71]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:16:18]  bitnet_pz_int4  t=5  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=31.8 tok/s  prompt=None tok/s  (19.1s)
+  cooldown 10s ...
+
+[2026-06-21 16:16:47]  bitnet_pz_int4  t=5  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=31.69 tok/s  prompt=None tok/s  (19.2s)
+  cooldown 10s ...
+
+[2026-06-21 16:17:17]  bitnet_pz_int4  t=5  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=31.47 tok/s  prompt=None tok/s  (19.5s)
+
+  *** t=5  BEST gen=31.8 tok/s  prompt=None tok/s
+      all runs gen: [31.8, 31.69, 31.47]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:17:46]  bitnet_pz_int4  t=6  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=33.56 tok/s  prompt=None tok/s  (18.4s)
+  cooldown 10s ...
+
+[2026-06-21 16:18:14]  bitnet_pz_int4  t=6  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=33.46 tok/s  prompt=None tok/s  (18.3s)
+  cooldown 10s ...
+
+[2026-06-21 16:18:43]  bitnet_pz_int4  t=6  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=33.68 tok/s  prompt=None tok/s  (18.0s)
+
+  *** t=6  BEST gen=33.68 tok/s  prompt=None tok/s
+      all runs gen: [33.56, 33.46, 33.68]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:19:11]  bitnet_pz_int4  t=7  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=32.5 tok/s  prompt=None tok/s  (18.6s)
+  cooldown 10s ...
+
+[2026-06-21 16:19:39]  bitnet_pz_int4  t=7  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=31.72 tok/s  prompt=None tok/s  (18.9s)
+  cooldown 10s ...
+
+[2026-06-21 16:20:08]  bitnet_pz_int4  t=7  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=32.3 tok/s  prompt=None tok/s  (18.6s)
+
+  *** t=7  BEST gen=32.5 tok/s  prompt=None tok/s
+      all runs gen: [32.5, 31.72, 32.3]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:20:37]  bitnet_pz_int4  t=8  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=31.68 tok/s  prompt=None tok/s  (19.0s)
+  cooldown 10s ...
+
+[2026-06-21 16:21:06]  bitnet_pz_int4  t=8  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=31.78 tok/s  prompt=None tok/s  (19.0s)
+  cooldown 10s ...
+
+[2026-06-21 16:21:35]  bitnet_pz_int4  t=8  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T.bin --tokenizer /home/ubuntu/project-zero/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0 --classifier int4
+  -> gen=32.03 tok/s  prompt=None tok/s  (18.9s)
+
+  *** t=8  BEST gen=32.03 tok/s  prompt=None tok/s
+      all runs gen: [31.68, 31.78, 32.03]
+  Summary -> /home/ubuntu/project-zero/benchmark_results/sweep_2026-06-21/bitnet_pz_int4/summary.txt
+
+  *** SUITE DONE — 30s cooldown before next suite ***
+
+======================================================================
+  SUITE 3/5: bitnet_msft  t=[1, 2, 3, 4, 5, 6, 7, 8]  best-of-3  500 tok
+======================================================================
+
+[2026-06-21 16:22:24]  bitnet_msft  t=1  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 1
+  -> gen=None tok/s  prompt=None tok/s  (266.1s)
+  cooldown 10s ...
+
+[2026-06-21 16:27:00]  bitnet_msft  t=1  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 1
+  -> gen=None tok/s  prompt=None tok/s  (266.8s)
+  cooldown 10s ...
+
+[2026-06-21 16:31:37]  bitnet_msft  t=1  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 1
+  -> gen=None tok/s  prompt=None tok/s  (262.8s)
+
+  *** t=1  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:36:09]  bitnet_msft  t=2  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 2
+  -> gen=None tok/s  prompt=None tok/s  (142.8s)
+  cooldown 10s ...
+
+[2026-06-21 16:38:42]  bitnet_msft  t=2  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 2
+  -> gen=None tok/s  prompt=None tok/s  (143.1s)
+  cooldown 10s ...
+
+[2026-06-21 16:41:15]  bitnet_msft  t=2  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 2
+  -> gen=None tok/s  prompt=None tok/s  (143.5s)
+
+  *** t=2  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:43:49]  bitnet_msft  t=3  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 3
+  -> gen=None tok/s  prompt=None tok/s  (104.5s)
+  cooldown 10s ...
+
+[2026-06-21 16:45:43]  bitnet_msft  t=3  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 3
+  -> gen=None tok/s  prompt=None tok/s  (104.5s)
+  cooldown 10s ...
+
+[2026-06-21 16:47:38]  bitnet_msft  t=3  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 3
+  -> gen=None tok/s  prompt=None tok/s  (104.3s)
+
+  *** t=3  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:49:32]  bitnet_msft  t=4  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 4
+  -> gen=None tok/s  prompt=None tok/s  (81.9s)
+  cooldown 10s ...
+
+[2026-06-21 16:51:04]  bitnet_msft  t=4  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 4
+  -> gen=None tok/s  prompt=None tok/s  (81.8s)
+  cooldown 10s ...
+
+[2026-06-21 16:52:36]  bitnet_msft  t=4  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 4
+  -> gen=None tok/s  prompt=None tok/s  (81.6s)
+
+  *** t=4  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:54:07]  bitnet_msft  t=5  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 5
+  -> gen=None tok/s  prompt=None tok/s  (105.1s)
+  cooldown 10s ...
+
+[2026-06-21 16:56:03]  bitnet_msft  t=5  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 5
+  -> gen=None tok/s  prompt=None tok/s  (105.0s)
+  cooldown 10s ...
+
+[2026-06-21 16:57:57]  bitnet_msft  t=5  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 5
+  -> gen=None tok/s  prompt=None tok/s  (105.4s)
+
+  *** t=5  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  cooldown 10s before next thread count ...
+
+[2026-06-21 16:59:53]  bitnet_msft  t=6  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 6
+  -> gen=None tok/s  prompt=None tok/s  (90.7s)
+  cooldown 10s ...
+
+[2026-06-21 17:01:34]  bitnet_msft  t=6  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 6
+  -> gen=None tok/s  prompt=None tok/s  (90.8s)
+  cooldown 10s ...
+
+[2026-06-21 17:03:14]  bitnet_msft  t=6  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 6
+  -> gen=None tok/s  prompt=None tok/s  (90.4s)
+
+  *** t=6  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:04:55]  bitnet_msft  t=7  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 7
+  -> gen=None tok/s  prompt=None tok/s  (82.8s)
+  cooldown 10s ...
+
+[2026-06-21 17:06:28]  bitnet_msft  t=7  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 7
+  -> gen=None tok/s  prompt=None tok/s  (82.9s)
+  cooldown 10s ...
+
+[2026-06-21 17:08:00]  bitnet_msft  t=7  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 7
+  -> gen=None tok/s  prompt=None tok/s  (82.5s)
+
+  *** t=7  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:09:33]  bitnet_msft  t=8  run 1/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 8
+  -> gen=None tok/s  prompt=None tok/s  (86.8s)
+  cooldown 10s ...
+
+[2026-06-21 17:11:10]  bitnet_msft  t=8  run 2/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 8
+  -> gen=None tok/s  prompt=None tok/s  (90.3s)
+  cooldown 10s ...
+
+[2026-06-21 17:12:50]  bitnet_msft  t=8  run 3/3
+  CMD: python3 run_inference.py -m /home/ubuntu/bitnet-cpp/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 -t 8
+  -> gen=None tok/s  prompt=None tok/s  (90.6s)
+
+  *** t=8  BEST gen=None tok/s  prompt=None tok/s
+      all runs gen: []
+  Summary -> /home/ubuntu/project-zero/benchmark_results/sweep_2026-06-21/bitnet_msft/summary.txt
+
+  *** SUITE DONE — 30s cooldown before next suite ***
+
+======================================================================
+  SUITE 4/5: smollm2_pz  t=[1, 2, 3, 4, 5, 6, 7, 8]  best-of-3  500 tok
+======================================================================
+
+[2026-06-21 17:14:51]  smollm2_pz  t=1  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0
+  -> gen=57.67 tok/s  prompt=None tok/s  (10.9s)
+  cooldown 10s ...
+
+[2026-06-21 17:15:12]  smollm2_pz  t=1  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0
+  -> gen=55.97 tok/s  prompt=None tok/s  (11.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:15:33]  smollm2_pz  t=1  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --max-tokens 500 --temperature 0
+  -> gen=58.0 tok/s  prompt=None tok/s  (11.0s)
+
+  *** t=1  BEST gen=58.0 tok/s  prompt=None tok/s
+      all runs gen: [57.67, 55.97, 58.0]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:15:54]  smollm2_pz  t=2  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0
+  -> gen=82.02 tok/s  prompt=None tok/s  (8.0s)
+  cooldown 10s ...
+
+[2026-06-21 17:16:12]  smollm2_pz  t=2  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0
+  -> gen=81.59 tok/s  prompt=None tok/s  (8.1s)
+  cooldown 10s ...
+
+[2026-06-21 17:16:30]  smollm2_pz  t=2  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --max-tokens 500 --temperature 0
+  -> gen=86.03 tok/s  prompt=None tok/s  (7.7s)
+
+  *** t=2  BEST gen=86.03 tok/s  prompt=None tok/s
+      all runs gen: [82.02, 81.59, 86.03]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:16:48]  smollm2_pz  t=3  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0
+  -> gen=100.44 tok/s  prompt=None tok/s  (6.9s)
+  cooldown 10s ...
+
+[2026-06-21 17:17:04]  smollm2_pz  t=3  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0
+  -> gen=93.54 tok/s  prompt=None tok/s  (7.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:17:22]  smollm2_pz  t=3  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --max-tokens 500 --temperature 0
+  -> gen=94.12 tok/s  prompt=None tok/s  (7.2s)
+
+  *** t=3  BEST gen=100.44 tok/s  prompt=None tok/s
+      all runs gen: [100.44, 93.54, 94.12]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:17:39]  smollm2_pz  t=4  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0
+  -> gen=98.28 tok/s  prompt=None tok/s  (6.9s)
+  cooldown 10s ...
+
+[2026-06-21 17:17:56]  smollm2_pz  t=4  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0
+  -> gen=93.74 tok/s  prompt=None tok/s  (7.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:18:13]  smollm2_pz  t=4  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --max-tokens 500 --temperature 0
+  -> gen=91.61 tok/s  prompt=None tok/s  (7.3s)
+
+  *** t=4  BEST gen=98.28 tok/s  prompt=None tok/s
+      all runs gen: [98.28, 93.74, 91.61]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:18:30]  smollm2_pz  t=5  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0
+  -> gen=84.77 tok/s  prompt=None tok/s  (7.9s)
+  cooldown 10s ...
+
+[2026-06-21 17:18:48]  smollm2_pz  t=5  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0
+  -> gen=95.93 tok/s  prompt=None tok/s  (7.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:19:05]  smollm2_pz  t=5  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --max-tokens 500 --temperature 0
+  -> gen=89.54 tok/s  prompt=None tok/s  (7.4s)
+
+  *** t=5  BEST gen=95.93 tok/s  prompt=None tok/s
+      all runs gen: [84.77, 95.93, 89.54]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:19:23]  smollm2_pz  t=6  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0
+  -> gen=89.63 tok/s  prompt=None tok/s  (7.4s)
+  cooldown 10s ...
+
+[2026-06-21 17:19:40]  smollm2_pz  t=6  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0
+  -> gen=88.3 tok/s  prompt=None tok/s  (7.5s)
+  cooldown 10s ...
+
+[2026-06-21 17:19:58]  smollm2_pz  t=6  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --max-tokens 500 --temperature 0
+  -> gen=88.26 tok/s  prompt=None tok/s  (7.5s)
+
+  *** t=6  BEST gen=89.63 tok/s  prompt=None tok/s
+      all runs gen: [89.63, 88.3, 88.26]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:20:15]  smollm2_pz  t=7  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0
+  -> gen=83.48 tok/s  prompt=None tok/s  (8.0s)
+  cooldown 10s ...
+
+[2026-06-21 17:20:33]  smollm2_pz  t=7  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0
+  -> gen=90.57 tok/s  prompt=None tok/s  (7.5s)
+  cooldown 10s ...
+
+[2026-06-21 17:20:51]  smollm2_pz  t=7  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --max-tokens 500 --temperature 0
+  -> gen=89.55 tok/s  prompt=None tok/s  (7.5s)
+
+  *** t=7  BEST gen=90.57 tok/s  prompt=None tok/s
+      all runs gen: [83.48, 90.57, 89.55]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:21:08]  smollm2_pz  t=8  run 1/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0
+  -> gen=83.32 tok/s  prompt=None tok/s  (8.0s)
+  cooldown 10s ...
+
+[2026-06-21 17:21:26]  smollm2_pz  t=8  run 2/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0
+  -> gen=77.78 tok/s  prompt=None tok/s  (8.4s)
+  cooldown 10s ...
+
+[2026-06-21 17:21:45]  smollm2_pz  t=8  run 3/3
+  CMD: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --max-tokens 500 --temperature 0
+  -> gen=78.44 tok/s  prompt=None tok/s  (8.4s)
+
+  *** t=8  BEST gen=83.32 tok/s  prompt=None tok/s
+      all runs gen: [83.32, 77.78, 78.44]
+  Summary -> /home/ubuntu/project-zero/benchmark_results/sweep_2026-06-21/smollm2_pz/summary.txt
+
+  *** SUITE DONE — 30s cooldown before next suite ***
+
+======================================================================
+  SUITE 5/5: smollm2_llama  t=[1, 2, 3, 4, 5, 6, 7, 8]  best-of-3  500 tok
+======================================================================
+
+[2026-06-21 17:22:23]  smollm2_llama  t=1  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=53.0 tok/s  prompt=314.3 tok/s  (9.9s)
+  cooldown 10s ...
+
+[2026-06-21 17:22:43]  smollm2_llama  t=1  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=52.1 tok/s  prompt=319.7 tok/s  (10.1s)
+  cooldown 10s ...
+
+[2026-06-21 17:23:03]  smollm2_llama  t=1  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 1 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=53.5 tok/s  prompt=300.3 tok/s  (9.8s)
+
+  *** t=1  BEST gen=53.5 tok/s  prompt=319.7 tok/s
+      all runs gen: [53.0, 52.1, 53.5]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:23:23]  smollm2_llama  t=2  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=84.2 tok/s  prompt=578.5 tok/s  (6.3s)
+  cooldown 10s ...
+
+[2026-06-21 17:23:39]  smollm2_llama  t=2  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=81.7 tok/s  prompt=588.7 tok/s  (6.5s)
+  cooldown 10s ...
+
+[2026-06-21 17:23:56]  smollm2_llama  t=2  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 2 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=83.6 tok/s  prompt=587.4 tok/s  (6.3s)
+
+  *** t=2  BEST gen=84.2 tok/s  prompt=588.7 tok/s
+      all runs gen: [84.2, 81.7, 83.6]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:24:12]  smollm2_llama  t=3  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=106.2 tok/s  prompt=646.4 tok/s  (5.0s)
+  cooldown 10s ...
+
+[2026-06-21 17:24:27]  smollm2_llama  t=3  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=105.8 tok/s  prompt=566.6 tok/s  (5.1s)
+  cooldown 10s ...
+
+[2026-06-21 17:24:42]  smollm2_llama  t=3  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 3 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=96.8 tok/s  prompt=700.9 tok/s  (5.5s)
+
+  *** t=3  BEST gen=106.2 tok/s  prompt=700.9 tok/s
+      all runs gen: [106.2, 105.8, 96.8]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:24:58]  smollm2_llama  t=4  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=102.1 tok/s  prompt=1086.7 tok/s  (5.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:25:13]  smollm2_llama  t=4  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=101.5 tok/s  prompt=1092.0 tok/s  (5.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:25:28]  smollm2_llama  t=4  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 4 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=100.9 tok/s  prompt=860.4 tok/s  (5.3s)
+
+  *** t=4  BEST gen=102.1 tok/s  prompt=1092.0 tok/s
+      all runs gen: [102.1, 101.5, 100.9]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:25:43]  smollm2_llama  t=5  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=93.9 tok/s  prompt=978.0 tok/s  (5.6s)
+  cooldown 10s ...
+
+[2026-06-21 17:25:59]  smollm2_llama  t=5  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=92.6 tok/s  prompt=875.8 tok/s  (5.7s)
+  cooldown 10s ...
+
+[2026-06-21 17:26:15]  smollm2_llama  t=5  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 5 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=93.1 tok/s  prompt=1063.6 tok/s  (5.7s)
+
+  *** t=5  BEST gen=93.9 tok/s  prompt=1063.6 tok/s
+      all runs gen: [93.9, 92.6, 93.1]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:26:30]  smollm2_llama  t=6  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=92.0 tok/s  prompt=938.5 tok/s  (5.8s)
+  cooldown 10s ...
+
+[2026-06-21 17:26:46]  smollm2_llama  t=6  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=92.5 tok/s  prompt=1019.6 tok/s  (5.7s)
+  cooldown 10s ...
+
+[2026-06-21 17:27:02]  smollm2_llama  t=6  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 6 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=94.9 tok/s  prompt=982.3 tok/s  (5.6s)
+
+  *** t=6  BEST gen=94.9 tok/s  prompt=1019.6 tok/s
+      all runs gen: [92.0, 92.5, 94.9]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:27:17]  smollm2_llama  t=7  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=84.9 tok/s  prompt=964.3 tok/s  (6.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:27:34]  smollm2_llama  t=7  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=94.9 tok/s  prompt=940.7 tok/s  (5.6s)
+  cooldown 10s ...
+
+[2026-06-21 17:27:49]  smollm2_llama  t=7  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 7 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=95.3 tok/s  prompt=1020.4 tok/s  (5.6s)
+
+  *** t=7  BEST gen=95.3 tok/s  prompt=1020.4 tok/s
+      all runs gen: [84.9, 94.9, 95.3]
+  cooldown 10s before next thread count ...
+
+[2026-06-21 17:28:05]  smollm2_llama  t=8  run 1/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=86.1 tok/s  prompt=941.4 tok/s  (6.1s)
+  cooldown 10s ...
+
+[2026-06-21 17:28:21]  smollm2_llama  t=8  run 2/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=85.0 tok/s  prompt=942.7 tok/s  (6.2s)
+  cooldown 10s ...
+
+[2026-06-21 17:28:37]  smollm2_llama  t=8  run 3/3
+  CMD: /home/ubuntu/llama.cpp/build/bin/llama-cli --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --threads 8 --n-predict 500 --temp 0 --single-turn --simple-io
+  -> gen=86.3 tok/s  prompt=958.1 tok/s  (6.2s)
+
+  *** t=8  BEST gen=86.3 tok/s  prompt=958.1 tok/s
+      all runs gen: [86.1, 85.0, 86.3]
+  Summary -> /home/ubuntu/project-zero/benchmark_results/sweep_2026-06-21/smollm2_llama/summary.txt
+
+======================================================================
+  COMBINED RESULTS
+======================================================================
+  bitnet_pz_bf16          peak gen=23.42 tok/s @ t=4  prompt=N/A tok/s
+  bitnet_pz_int4          peak gen=35.79 tok/s @ t=4  prompt=N/A tok/s
+Traceback (most recent call last):
+  File "/home/ubuntu/project-zero/tools/run_sweep.py", line 215, in <module>
+    print(f"  {sname:<22}  peak gen={peak_gen:.2f} tok/s @ t={peak_t}  "
+                                    ^^^^^^^^^^^^^^
+TypeError: unsupported format string passed to NoneType.__format__
+SWEEP FAILED

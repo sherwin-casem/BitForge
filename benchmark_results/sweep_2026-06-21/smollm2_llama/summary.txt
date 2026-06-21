@@ -1,0 +1,15 @@
+Suite: smollm2_llama
+Date: 2026-06-21 17:28:43.788120
+Prompt: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+Max tokens: 500  |  Runs per thread: 3
+
+t     best_gen (tok/s)      best_prompt (tok/s)     all_gen_runs
+--------------------------------------------------------------------------------
+1     53.50                 319.70                  [53.0, 52.1, 53.5]
+2     84.20                 588.70                  [84.2, 81.7, 83.6]
+3     106.20                700.90                  [106.2, 105.8, 96.8]
+4     102.10                1092.00                 [102.1, 101.5, 100.9]
+5     93.90                 1063.60                 [93.9, 92.6, 93.1]
+6     94.90                 1019.60                 [92.0, 92.5, 94.9]
+7     95.30                 1020.40                 [84.9, 94.9, 95.3]
+8     86.30                 958.10                  [86.1, 85.0, 86.3]
