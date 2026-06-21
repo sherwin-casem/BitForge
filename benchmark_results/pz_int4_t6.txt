@@ -1,0 +1,40 @@
+Project Zero Engine v0.1.0-5-g04ea109 — Auto-Tuned Hardware
+SIMD: avx512f (calibrated optimal)
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 8 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1280   KiB per core                 │
+│ L3 cache      : 8      MiB shared                   │
+│ Free RAM      : 11983  MiB                          │
+│ DRAM bandwidth: 10.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB                           │
+│ Ceiling       : 14.1   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 6 threads | AVX-512 VNNI | INT4 cls | 4T | 10.0 GB/s | ceiling 14 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+ 1. Supervised learning is when a model is trained on labeled data. 2. Unsupervised learning is when a model is trained on unlabeled data. 3. Supervised learning is
+[gen] 42.83 tok/s (41 tokens)
+
+

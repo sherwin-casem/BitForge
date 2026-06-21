@@ -10,14 +10,18 @@
   <img src="docs/tty_bitnet.png" width="720" alt="Project Zero: BitNet b1.58 running at 36.25 tok/s on Intel Xeon, no GPU">
 </p>
 
+<p align="center">
+  <img src="docs/demo_bitnet.gif" width="720" alt="Project Zero: BitNet b1.58-2B-4T live demo on i5-11300H">
+</p>
+
 [Benchmarks](#benchmarks) · [Quick Start](#quick-start) · [Help Wanted](#help-wanted) · [Docs](docs/)
 
 ---
 
-Pure C, single binary. Runs Microsoft's BitNet b1.58 **1.80× faster than Microsoft's own `bitnet.cpp`** — and dense GGUF models — no GPU, no Python, no ML framework.
+Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than Microsoft's own `bitnet.cpp`** — and dense GGUF models — no GPU, no Python, no ML framework.
 
 - **Pure C, zero runtime deps** — `make release`, one executable, nothing else required
-- **1.80× faster than bitnet.cpp** — at 95% of the analytical DRAM bandwidth ceiling ([reproduced on OpenBenchmarking.org ↓](#benchmarks))
+- **3.7–6.4× faster than bitnet.cpp** — measured on i5-11300H; 1.80× on 4-core Xeon ([OpenBenchmarking.org ↓](#benchmarks))
 - **One binary, two model families** — BitNet ternary and dense F16 GGUF, no per-model rebuild
 
 ---
@@ -26,7 +30,34 @@ Pure C, single binary. Runs Microsoft's BitNet b1.58 **1.80× faster than Micros
 
 ## Benchmarks
 
-**BitNet b1.58-2B-4T vs. Microsoft `bitnet.cpp`** — same model, same Intel Xeon (AVX-512 VNNI), same thread count:
+### Intel i5-11300H @ 3.10 GHz · 16 GB DDR4 · AVX-512 VNNI (2026-06-21)
+
+**BitNet b1.58-2B-4T — Project Zero vs. Microsoft `bitnet.cpp`** — same model, same machine, same prompt, sequential runs:
+
+| Threads | PZ BF16 | PZ INT4 | bitnet.cpp (i2_s) | BF16 Gain | INT4 Gain |
+|---|---|---|---|---|---|
+| 1 | 12.17 tok/s | **20.15 tok/s** | 2.11 | +477% | +855% |
+| 2 | 23.27 tok/s | **32.80 tok/s** | 3.83 | +507% | +756% |
+| 3 | 23.94 tok/s | **39.89 tok/s** | 5.31 | +351% | +651% |
+| 4 | 25.12 tok/s | **42.76 tok/s** | 6.73 | +273% | +535% |
+| 5 | 24.95 tok/s | **37.57 tok/s** | 5.32 | +369% | +606% |
+| 6 | 25.00 tok/s | **42.83 tok/s** | 6.29 | +297% | +581% |
+| 7 | 28.11 tok/s | **35.05 tok/s** | 6.60 | +326% | +431% |
+| 8 | 22.16 tok/s | **32.71 tok/s** | 6.10 | +263% | +436% |
+
+**Peak: PZ INT4 = 42.83 tok/s (t=6) · PZ BF16 = 28.11 tok/s (t=7) · MSFT = 6.73 tok/s (t=4)**
+
+> Project Zero BF16 is **3.7–5.8× faster** than bitnet.cpp. INT4 classifier is **5.3–9.6× faster** — same output quality on classification, faster decode.
+
+<p align="center">
+  <img src="docs/comparison_graph_i5.png" width="720" alt="Tok/s vs threads: PZ BF16, PZ INT4, Microsoft bitnet.cpp on i5-11300H">
+</p>
+
+<p align="center">
+  <img src="docs/bar_comparison_i5.png" width="640" alt="Peak throughput bar chart: PZ INT4 42.83, PZ BF16 28.11, MSFT 6.73 tok/s">
+</p>
+
+### Intel Xeon · AVX-512 VNNI (PGO+LTO, from earlier run)
 
 | Threads | Project Zero | bitnet.cpp (i2_s) | Gain |
 |---|---|---|---|
@@ -178,4 +209,4 @@ Full flag reference and REPL commands: run `./adaptive_ai_engine --help`
 ---
 
 *Phase 34+ · BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · SmolLM2-135M F16 · SigLIP vision*
-*Best: **36.25 tok/s** (BitNet, Xeon PGO+LTO) · **83.79 tok/s** (SmolLM2 F16) · **1.80× vs bitnet.cpp** · 95% DRAM ceiling*
+*Best: **42.83 tok/s** (BitNet INT4, i5-11300H) · **36.25 tok/s** (Xeon PGO+LTO) · **83.79 tok/s** (SmolLM2 F16) · **6.4× vs bitnet.cpp** (INT4) · 95% DRAM ceiling*

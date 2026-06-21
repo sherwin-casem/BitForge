@@ -1,0 +1,44 @@
+register_backend: registered backend CPU (1 devices)
+register_device: registered device CPU (11th Gen Intel(R) Core(TM) i5-11300H @ 3.10GHz)
+warning: not compiled with GPU offload support, --gpu-layers option will be ignored
+warning: see main README.md for information on enabling GPU BLAS support
+build: 3962 (1f86f058) with Ubuntu clang version 18.1.8 (++20240731025043+3b5b5c1ec4a3-1~exp1~20240731145144.92) for x86_64-pc-linux-gnu (debug)
+main: llama backend init
+main: load the model and apply lora adapter, if any
+...............................
+llama_new_context_with_model: n_batch is less than GGML_KQ_MASK_PAD - increasing to 32
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 32
+llama_new_context_with_model: n_ubatch   = 32
+llama_new_context_with_model: flash_attn = 0
+llama_new_context_with_model: freq_base  = 500000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =   150.00 MiB
+llama_new_context_with_model: KV self size  =  150.00 MiB, K (f16):   75.00 MiB, V (f16):   75.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.49 MiB
+llama_new_context_with_model:        CPU compute buffer size =    15.97 MiB
+llama_new_context_with_model: graph nodes  = 1116
+llama_new_context_with_model: graph splits = 1
+common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+main: llama threadpool init, n_threads = 3
+
+system_info: n_threads = 3 (n_threads_batch = 3) / 8 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 0 | FMA = 1 | NEON = 0 | SVE = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | RISCV_VECT = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 1 | VSX = 0 | MATMUL_INT8 = 0 | LLAMAFILE = 1 | 
+
+sampler seed: 1608780380
+sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.800
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampler chain: logits -> logit-bias -> penalties -> top-k -> tail-free -> typical -> top-p -> min-p -> temp-ext -> softmax -> dist 
+generate: n_ctx = 2048, n_batch = 1, n_predict = 40, n_keep = 1
+
+Explain the difference between supervised and unsupervised learning in three sentences.##  
+Supervised learning is when an algorithm is trained on labeled data.  
+Unsupervised learning is when an algorithm is trained on unlabeled data.  
+Both types of learning can be used to
+
+llama_perf_sampler_print:    sampling time =      17.09 ms /    56 runs   (    0.31 ms per token,  3277.54 tokens per second)
+llama_perf_context_print:        load time =    1179.13 ms
+llama_perf_context_print: prompt eval time =    3010.86 ms /    16 tokens (  188.18 ms per token,     5.31 tokens per second)
+llama_perf_context_print:        eval time =    7344.31 ms /    39 runs   (  188.32 ms per token,     5.31 tokens per second)
+llama_perf_context_print:       total time =   10404.54 ms /    55 tokens
