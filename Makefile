@@ -175,7 +175,8 @@ AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
             math/matmul_f16 math/quantize_i8 math/parallel_matmul
 AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))
 
-AVX512_TUS := math/ternary_matmul_packed_avx512 math/elementwise_avx512 \
+AVX512_TUS := math/ternary_matmul_packed_avx512 math/ternary_matmul_lut_avx512bw \
+              math/elementwise_avx512 \
               math/rmsnorm_avx512 math/softmax_avx512
 AVX512_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX512_TUS)))
 
@@ -283,8 +284,8 @@ test: $(LIB_OBJS) $(TEST_BINS)
 
 bench: $(LIB_OBJS) tools/bench_simd.c
 	@mkdir -p build/tools
-	$(CC) $(CFLAGS_RELEASE) -mavx512vnni -mavxvnni -o build/tools/bench_simd \
-	    tools/bench_simd.c $(LIB_OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS_RELEASE) $(SIMD_TEST_FLAGS) -o build/tools/bench_simd \
+	    tools/bench_simd.c $(LIB_OBJS) $(LDFLAGS) -lstdc++
 	@echo "=== Running Phase 16-S SIMD Microbenchmarks ==="
 	@build/tools/bench_simd
 
