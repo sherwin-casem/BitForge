@@ -87,6 +87,26 @@ not the 74.6 Gop/s headline in the PR description.
 
 ---
 
+## SIMD backend × classifier × thread sweep (in place of the blocked MS bitnet.cpp comparison)
+
+Since a native Microsoft `bitnet.cpp` comparison was blocked (GitHub egress, see below), here's the
+comparison that *is* available on this hardware: Project Zero's own existing kernels — this doesn't
+touch the new K-6 LUT kernel at all (still unwired), but it does show what headroom already exists
+from backend/classifier selection alone, and it's the fairest apples-to-apples data this sandbox can
+produce. 36 configs: `{scalar, avx2, avx512f, vnni} × {bf16, int8} ∪ {vnni × int4}`, threads 1–4,
+same model/prompt as above:
+
+![SIMD backend x classifier x thread sweep](../../benchmark_results/lut_review_2026-07-04/simd_classifier_sweep.png)
+
+**Peak: `vnni` / `int4` @ t=4 → 18.54 tok/s** (1.3× over the `scalar`/`bf16` baseline at the same
+thread count). One notable anomaly: `avx2` and `avx512f` both *regress* going from t=3 to t=4
+(13.3→12.3 and 14.3→11.7 tok/s) while `scalar` and `vnni` keep climbing — worth a look if anyone
+picks up thread-scaling work on this engine, independent of this PR.
+
+![Peak-config terminal capture](../../benchmark_results/lut_review_2026-07-04/screenshots/bitnet_simd_sweep_peak.png)
+
+---
+
 ## Before / after the fix, measured end-to-end
 
 Because the kernel isn't referenced from `simd_dispatch.c` or any call site outside its own file,
