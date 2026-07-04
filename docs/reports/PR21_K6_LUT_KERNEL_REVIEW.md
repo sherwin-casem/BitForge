@@ -25,12 +25,17 @@
 | CPU | Intel Xeon Scalable (cloud vCPU) |
 | Cores / threads | 4 / 4 |
 | L1d / L1i | 192 KiB / 128 KiB |
-| L2 (total) | 8 MiB |
-| L3 (shared) | 260 MiB |
+| L2 (per core) | 1024–2048 KiB (varied across batches, see note) |
+| L3 (shared) | 33–260 MiB (varied across batches, see note) |
 | RAM | 15 GiB |
-| DRAM bandwidth (engine-measured) | 10.6–12.6 GB/s across runs |
+| DRAM bandwidth (engine-measured) | 10.4–16.1 GB/s across runs |
 | ISA features detected | AVX2, FMA, F16C, AVX-512F, AVX-512BW, AVX-512VL, AVX-512DQ, AVX-512VNNI, AVX-512BF16, AVX-512VBMI |
 | OS / arch | Linux, x86-64 |
+
+The SIMD/classifier sweep batch reported L2=1024 KiB/core, L3=33 MiB, DRAM 10.4–12.6 GB/s; the
+before/after and cross-engine batches (run later) reported L2=2048 KiB/core, L3=260 MiB, DRAM
+15.1–16.1 GB/s. Same virtualized host, different apparent topology per batch — consistent with the
+noisy-neighbor drift noted below, not a measurement error. The table above spans both.
 
 This is a different machine from the i5-11300H / Xeon boxes in `docs/BENCHMARK.md` and
 `docs/PERFORMANCE_CEILING_REPORT.md` — absolute tok/s numbers below are not directly comparable to
@@ -99,9 +104,10 @@ same model/prompt as above:
 ![SIMD backend x classifier x thread sweep](../../benchmark_results/lut_review_2026-07-04/simd_classifier_sweep.png)
 
 **Peak: `vnni` / `int4` @ t=4 → 18.54 tok/s** (1.3× over the `scalar`/`bf16` baseline at the same
-thread count). One notable anomaly: `avx2` and `avx512f` both *regress* going from t=3 to t=4
-(13.3→12.3 and 14.3→11.7 tok/s) while `scalar` and `vnni` keep climbing — worth a look if anyone
-picks up thread-scaling work on this engine, independent of this PR.
+thread count). One notable anomaly: `avx2` *regresses* going from t=3 to t=4 (bf16 11.34→10.57,
+int8 13.27→12.33 tok/s) while `scalar`, `avx512f`, and `vnni` all keep climbing over the same
+range (`avx512f` bf16 11.52→11.68, int8 14.28→18.21) — worth a look if anyone picks up
+thread-scaling work on this engine, independent of this PR.
 
 ![Peak-config terminal capture](../../benchmark_results/lut_review_2026-07-04/screenshots/bitnet_simd_sweep_peak.png)
 
