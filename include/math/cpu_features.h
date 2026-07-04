@@ -26,6 +26,7 @@ typedef struct {
     bool avx_vnni;       /* AVX-VNNI 256-bit int8 — Alder Lake 2021+, Zen3 2020+ */
     bool avx512bf16;     /* AVX-512 BF16 — Sapphire Rapids 2023+, Zen4 2022+ */
     bool avx512fp16;     /* AVX-512 FP16 — Sapphire Rapids 2023+, Meteor Lake 2023+ */
+    bool avx512bw;       /* AVX-512 BW (byte/word) — Skylake-X 2017+, required for vpermt2w */
     bool avx512vbmi;     /* AVX-512 VBMI (byte permute) — Ice Lake 2019+ */
 
     /* ARM features */

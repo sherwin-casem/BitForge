@@ -36,6 +36,7 @@ static void detect_x86(TnCpuFeatures *f) {
     if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) {
         f->avx2        = (ebx >> 5)  & 1;
         f->avx512f     = (ebx >> 16) & 1;
+        f->avx512bw    = (ebx >> 30) & 1;
         f->avx512vnni  = (ecx >> 11) & 1;
         f->avx512vbmi  = (ecx >> 1)  & 1;
         f->avx512fp16  = (edx >> 23) & 1;
@@ -151,6 +152,8 @@ void tn_cpu_features_report(const TnCpuFeatures *f) {
     printf("  [x86-64]\n");
     printf("  AVX2         : %s\n", f->avx2        ? "YES" : "no");
     printf("  AVX-512F     : %s\n", f->avx512f     ? "YES" : "no");
+    printf("  AVX-512 BW   : %s  <-- byte/word ops, vpermt2w LUT kernel\n",
+           f->avx512bw    ? "YES" : "no");
     printf("  AVX-512 VNNI : %s  <-- ternary int8 kernel (64 MACs/cycle)\n",
            f->avx512vnni  ? "YES" : "no");
     printf("  AVX-VNNI     : %s  <-- 256-bit int8 kernel (32 MACs/cycle)\n",

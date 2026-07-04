@@ -86,6 +86,13 @@ typedef uint64_t tn_u64;
     #define TN_HAS_AVX512 0
 #endif
 
+/* x86-64: AVX-512BW (byte/word) — Skylake-X 2017+; required for vpermt2w LUT kernel */
+#if defined(__AVX512BW__)
+    #define TN_HAS_AVX512BW 1
+#else
+    #define TN_HAS_AVX512BW 0
+#endif
+
 /* x86-64: AVX2 */
 #if defined(__AVX2__)
     #define TN_HAS_AVX2 1
