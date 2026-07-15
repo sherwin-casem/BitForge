@@ -1,7 +1,7 @@
 # Tool Sync Policy — project-zero
 
 > Defines canonical vs adapter files and how they stay synchronized.
-> Last updated: 2026-06-07.
+> Last updated: 2026-07-15.
 
 ## Canonical (source of truth)
 `docs/ai/**` — overview, engineering-rules, mistakes, decision-log, change-trace,
@@ -35,8 +35,16 @@ architecture/workflow changes, or docs diverge from reality.
 ## When to add OPTIONAL scoped files (only with repo evidence)
 Add `api`/`infra`/`database`/etc. scoped rule/instruction files only when a recurring scoped
 rule actually exists. This repo's natural scopes today: `core` (engine/memory/safety), `docs`,
-`tests`, `config` (build + GGUF/runtime config). An `api` scope (`src/api/`) and a
-`simd/math` scope are candidate future additions — add only when justified.
+`tests`, `config` (build + GGUF/runtime config). A `simd/math` scope is a candidate future
+addition — add only when justified.
+
+**`api` scope — justified as of Phase 22** (`src/api/` gained CORS/auth/metrics/OpenAPI/cancel/
+concurrency-rearchitecture surface plus the embedded web UI). Add `.claude/rules/api.md` +
+`.github/instructions/api.instructions.md` + `.agents/rules/api.md` summarizing: routes are
+hand-rolled (no external HTTP lib), CORS/auth default OFF, only one `generate_with_callback` in
+flight at a time (mutex-serialized, second concurrent request gets 429), and the web UI bundle
+is generated/committed (never hand-edit `webui_bundle_generated.c`; edit `webui/src` + run
+`make webui-bundle`).
 
 ## Drift check
 At session start and before task completion, confirm adapters still match the canonical docs;

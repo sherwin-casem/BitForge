@@ -1,7 +1,17 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-06-19.
+> Update after each meaningful sub-step. Last updated: 2026-07-15.
+
+### 2026-07-15 — Phase 22.0: docs groundwork for Web UI & API/DX hardening
+- What: Recorded the Phase 22 plan (web chat UI via Vite+Svelte embedded in the binary, HTTP API
+  hardening with a concurrency rearchitecture, CLI/REPL polish, mandatory design-QA + regression
+  screenshots) before any code changes. Justified and documented the `api` scope in
+  `tool-sync-policy.md` (adapter files to be added once 22.1 lands).
+- Why: `docs/ai/**` is canonical and updated before code per policy; this is a large multi-phase
+  effort and needs the decision trail written down first.
+- Areas: `docs/ai/decision-log.md`, `docs/ai/project-overview.md`, `docs/ai/tool-sync-policy.md`.
+- Branch: `claude/project-zero-ui-ux-gaps-h54mdc`.
 
 ### 2026-06-19 — Portable `make dist` build + GitHub Release pipeline
 - What: Added a portable distribution build and a release workflow that attaches a prebuilt
