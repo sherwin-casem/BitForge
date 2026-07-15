@@ -33,4 +33,8 @@ void server_config_free(ServerConfig *sc) {
     sc->auth.api_key = NULL;
     free(sc->static_dir);
     sc->static_dir = NULL;
+    free(sc->vision_path);
+    sc->vision_path = NULL;
+    free(sc->proj_path);
+    sc->proj_path = NULL;
 }

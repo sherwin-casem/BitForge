@@ -11,13 +11,15 @@
  * Supported routes
  * ────────────────
  *   GET  /v1/models                       → JSON model list
- *   POST /v1/chat/completions             → Chat completion (streaming + non-streaming)
+ *   POST /v1/chat/completions             → Chat completion (streaming + non-streaming;
+ *                                            image_url content parts run the vision
+ *                                            pipeline when --vision/--proj are set)
  *   POST /v1/chat/completions/cancel      → Cancel the in-flight generation
  *   GET  /health                          → {"status":"ok"} (never gated by auth)
  *   GET  /metrics                         → Prometheus text exposition (if --metrics)
  *   GET  /docs                            → Hand-rolled API docs page
  *   GET  /openapi.json                    → Static OpenAPI 3.0 description
- *   GET  /                                → {"status":"ok"} until Phase 22.2 wires the web UI
+ *   GET  / and files under /assets/        → Web chat UI (Phase 22.2, unless --web-ui off)
  *   OPTIONS *                             → CORS preflight (if --cors)
  *
  * Threading model (Phase 22)
@@ -53,6 +55,9 @@
 #include "api/metrics.h"
 #include "api/openapi.h"
 #include "api/cancel.h"
+#include "api/static_assets.h"
+#include "api/data_url.h"
+#include "multimodal/vision_pipeline.h"
 #include "transformer/generate.h"
 #include "core/debug.h"
 
@@ -304,6 +309,68 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         pthread_mutex_unlock(&ctx->generation_mutex);
         send_error_ex(fd, 400, "No messages in request", extra_headers);
         return;
+    }
+
+    /* Phase 22.2: image upload via the web UI's image_url content parts —
+     * inject the vision pipeline into the KV cache before compiling/
+     * generating the prompt, mirroring the CLI's --image handling.
+     * Best-effort: an image sent to a server with no --vision/--proj
+     * configured is logged and skipped (text-only fallback), matching the
+     * CLI's own behavior when --image is given without --vision/--proj. */
+    for (int i = req.num_messages - 1; i >= 0; i--) {
+        if (strcmp(req.messages[i].role, "user") != 0 || !req.messages[i].image_data_url) continue;
+
+        if (!ctx->server_config.vision_path || !ctx->server_config.proj_path) {
+            fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj configured; ignoring image\n");
+            break;
+        }
+
+        unsigned char *img_bytes = NULL;
+        size_t img_len = 0;
+        if (data_url_decode(req.messages[i].image_data_url, &img_bytes, &img_len) != TN_OK) {
+            fprintf(stderr, "[vision] failed to decode image_url data\n");
+            break;
+        }
+
+        char tmp_path[] = "/tmp/pz-vision-upload-XXXXXX";
+        int tmp_fd = mkstemp(tmp_path);
+        if (tmp_fd < 0) {
+            fprintf(stderr, "[vision] failed to create temp file for uploaded image\n");
+            free(img_bytes);
+            break;
+        }
+        ssize_t written = write(tmp_fd, img_bytes, img_len);
+        close(tmp_fd);
+        free(img_bytes);
+        if (written < 0 || (size_t)written != img_len) {
+            fprintf(stderr, "[vision] failed to write temp image file\n");
+            unlink(tmp_path);
+            break;
+        }
+
+        /* static: safe because only one generation runs at a time
+         * (generation_mutex, held for the whole of this function). */
+        static char stripped_prompt_buf[8192];
+        const char *stripped_prompt = req.messages[i].content;
+        /* cfg/weights are declared const in ApiContext (text generation
+         * never mutates them); the vision pipeline's KV-cache injection
+         * needs non-const pointers even though it doesn't rewrite either —
+         * same underlying objects main.c's CLI path passes non-const. */
+        vision_pipeline_run(tmp_path, ctx->server_config.vision_path, ctx->server_config.proj_path,
+                            (Config *)ctx->cfg, (TransformerWeights *)ctx->weights, ctx->run_state,
+                            ctx->moe_cfg, ctx->tok, ctx->tp,
+                            req.messages[i].content, stripped_prompt_buf, sizeof(stripped_prompt_buf),
+                            &stripped_prompt);
+        unlink(tmp_path);
+
+        if (stripped_prompt != req.messages[i].content) {
+            char *new_content = strdup(stripped_prompt);
+            if (new_content) {
+                free(req.messages[i].content);
+                req.messages[i].content = new_content;
+            }
+        }
+        break;
     }
 
     /* Compile messages into a single prompt.
@@ -590,8 +657,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
     int status = 200;
     if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/models") == 0) {
         handle_get_models(fd, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 &&
-               (strcmp(req.path, "/health") == 0 || strcmp(req.path, "/") == 0)) {
+    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0) {
+        /* Always available, regardless of --web-ui — distinct from "/",
+         * which now serves the web UI (Phase 22.2). */
         handle_health(fd, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/metrics") == 0) {
         if (ctx->server_config.metrics.enabled) {
@@ -610,6 +678,12 @@ static void handle_connection(int fd, ApiContext *ctx) {
     } else if (strcmp(req.method, "POST") == 0 &&
                strcmp(req.path, "/v1/chat/completions/cancel") == 0) {
         handle_cancel(fd, req.body, req.body_len, ctx, extra_headers);
+    } else if (strcmp(req.method, "GET") == 0 &&
+               ctx->server_config.web_ui != WEBUI_MODE_OFF) {
+        /* Web UI (Phase 22.2): "/" and files under "/assets/", placed after
+         * every API route so nothing above is ever shadowed. Any other
+         * unmatched GET also falls through here for client-side SPA routing. */
+        status = static_assets_serve(fd, req.path, &ctx->server_config, extra_headers);
     } else {
         status = 404;
         send_error_ex(fd, 404, "Not found", extra_headers);
@@ -759,6 +833,9 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     printf("[API]   POST http://127.0.0.1:%d/v1/chat/completions/cancel\n", port);
     printf("[API]   GET  http://127.0.0.1:%d/health\n", port);
     printf("[API]   GET  http://127.0.0.1:%d/docs\n", port);
+    if (ctx->server_config.web_ui != WEBUI_MODE_OFF)
+        printf("[API]   GET  http://127.0.0.1:%d/  (web chat UI%s)\n", port,
+               ctx->server_config.static_dir ? ", served from disk" : "");
     if (ctx->server_config.metrics.enabled)
         printf("[API]   GET  http://127.0.0.1:%d/metrics\n", port);
     if (ctx->server_config.cors.enabled)

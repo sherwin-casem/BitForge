@@ -38,6 +38,9 @@ void print_usage(const char *prog_name) {
     printf("  --api-key <key>     Require 'Authorization: Bearer <key>' on API requests\n");
     printf("                      (off by default — loopback experimentation is open).\n");
     printf("  --metrics           Enable GET /metrics (Prometheus text exposition).\n");
+    printf("  --web-ui <mode>     Web chat UI: auto (default, on with --server), on, off.\n");
+    printf("  --static-dir <path> Serve the web UI from disk instead of the embedded\n");
+    printf("                      bundle (dev mode, for iterating on webui/dist/).\n");
 
     printf("\nMultimodal (vision):\n");
     printf("  --image <path>      Path to image file for multimodal queries (optional)\n");
@@ -94,6 +97,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->num_cors_origins = 0;
     args->api_key = NULL;
     args->metrics_enabled = false;
+    args->static_dir = NULL;
+    args->web_ui_mode = WEBUI_MODE_AUTO;
     args->color_mode = TN_COLOR_AUTO;
 
     for (int i = 1; i < argc; i++) {
@@ -171,6 +176,17 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->api_key = argv[++i];
         } else if (strcmp(argv[i], "--metrics") == 0) {
             args->metrics_enabled = true;
+        } else if (strcmp(argv[i], "--static-dir") == 0 && i + 1 < argc) {
+            args->static_dir = argv[++i];
+        } else if (strcmp(argv[i], "--web-ui") == 0 && i + 1 < argc) {
+            const char *mode = argv[++i];
+            if (strcmp(mode, "auto") == 0)      args->web_ui_mode = WEBUI_MODE_AUTO;
+            else if (strcmp(mode, "on") == 0)   args->web_ui_mode = WEBUI_MODE_ON;
+            else if (strcmp(mode, "off") == 0)  args->web_ui_mode = WEBUI_MODE_OFF;
+            else {
+                fprintf(stderr, "Error: --web-ui must be one of: auto, on, off\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--color") == 0 && i + 1 < argc) {
             const char *mode = argv[++i];
             if (strcmp(mode, "auto") != 0 && strcmp(mode, "always") != 0 && strcmp(mode, "never") != 0) {

@@ -85,18 +85,20 @@ see `docs/RELEASING.md`).
 - **Runtime SIMD dispatch** (`src/math/simd_dispatch.c`, `cpu_features.c`) selects kernels.
 - **HTTP API** (`src/api/`) exposes the engine; mirrors OpenAI chat schema. **Phase 21** shipped
   `POST /v1/chat/completions` (streaming + non-streaming SSE), `GET /v1/models`, `GET /health`.
-  **Phase 22 (in progress)** hardens this into a real server: CORS, optional API-key auth,
-  `/metrics` (Prometheus), `/docs`+`/openapi.json`, a cancel endpoint, and a concurrency
-  rearchitecture (per-connection threads + a `generation_mutex`, replacing the old
-  serial-inline-accept-loop model) so static asset/UI serving isn't blocked behind an in-flight
-  generation. Still binds loopback-only by default. Logic-level tests in `tests/test_api_server.c`
-  plus new `tests/test_cors.c`/`test_auth.c`/`test_metrics.c`/`test_cancel.c`/`test_openapi.c`.
-- **Web chat UI** (Phase 22, `webui/`): a Vite+Svelte SPA served by the HTTP API at `GET /`
+  **Phase 22.1** hardened this into a real server: CORS, optional API-key auth, `/metrics`
+  (Prometheus), `/docs`+`/openapi.json`, a cancel endpoint, and a concurrency rearchitecture
+  (per-connection threads + a `generation_mutex`, replacing the old serial-inline-accept-loop
+  model) so static asset/UI serving isn't blocked behind an in-flight generation. Still binds
+  loopback-only by default. Logic-level tests in `tests/test_api_server.c` plus
+  `tests/test_cors.c`/`test_auth.c`/`test_metrics.c`/`test_cancel.c`/`test_openapi.c`.
+- **Web chat UI** (Phase 22.2, `webui/`): a Vite+Svelte SPA served by the HTTP API at `GET /`
   (`GET /health` remains the separate JSON health check). Built bundle is embedded into the C
   binary as a committed generated TU (`src/api/webui_bundle_generated.c`) — default builds need
   no Node; `make webui-bundle` regenerates it when `webui/src` changes. Supports streaming chat,
-  adjustable sampling params, stop/cancel, theme toggle, and image upload (when the server is
-  started with `--vision`).
+  adjustable sampling params, stop/cancel, theme toggle, and image upload via the OpenAI
+  "content parts" form (`src/api/data_url.c` decodes the base64 payload; the vision pipeline
+  itself lives in `src/multimodal/vision_pipeline.c`, shared with the CLI's `--image`, active
+  when the server is started with `--vision`/`--proj`).
 - **Conversion tools** (`tools/convert_*`, `import_model.py`) bridge HuggingFace → engine formats.
 
 ## Reference reports

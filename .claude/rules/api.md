@@ -11,6 +11,9 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
   (static assets, `/metrics`, `/docs`, `/health`, cancel) must never touch that mutex.
 - The web UI bundle (`src/api/webui_bundle_generated.c`) is **generated and committed** — never
   hand-edit it; edit `webui/src` and run `make webui-bundle`.
+- Image uploads (`image_url` content parts) decode via `src/api/data_url.c` and run through
+  `src/multimodal/vision_pipeline.c` (shared with the CLI's `--image`) — requires the server to
+  be started with `--vision`/`--proj`; otherwise images are logged and ignored (text-only).
 - A component documented as "untested" is not verified — real socket/HTTP code needs a live
   `curl`/`curl --raw` smoke test, not just the pipe-based logic tests in `tests/test_api_server.c`
   (see the 2026-07-15 mistakes.md entry: four real bugs hid behind that label).

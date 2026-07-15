@@ -34,7 +34,13 @@ typedef struct {
     AuthConfig    auth;
     MetricsConfig metrics;
     WebUiMode     web_ui;
-    char         *static_dir; /* --static-dir: serve UI from disk instead of the embedded bundle */
+    char         *static_dir;  /* --static-dir: serve UI from disk instead of the embedded bundle */
+    /* Phase 22.2: image uploads via the web UI's image_url content parts.
+     * Mirrors CliArgs.vision_path/proj_path — NULL means vision is disabled
+     * for --server mode, matching the CLI's own --image/--vision/--proj
+     * requirement (both must be set). */
+    char         *vision_path;
+    char         *proj_path;
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

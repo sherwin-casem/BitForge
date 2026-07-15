@@ -176,6 +176,7 @@ set(MULTIMODAL_SOURCES
     src/multimodal/vision_encoder.c
     src/multimodal/vision_projector.c
     src/multimodal/vision_weights_load.c
+    src/multimodal/vision_pipeline.c
 )
 
 set(MEMORY_SOURCES
@@ -248,6 +249,9 @@ set(API_SOURCES
     src/api/metrics.c
     src/api/openapi.c
     src/api/cancel.c
+    src/api/static_assets.c
+    src/api/webui_bundle_generated.c
+    src/api/data_url.c
 )
 
 set(RAG_SOURCES

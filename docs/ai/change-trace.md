@@ -3,6 +3,64 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-15 — Phase 22.2: Web chat UI (Vite+Svelte, embedded bundle) + image upload
+- What: Added `webui/` — a Vite+Svelte SPA (chat window, streaming responses, sampling
+  controls, dark/light theme, model info, image upload) built via `npm --prefix webui run
+  build`. The build output is embedded into the C binary as a generated, git-committed TU
+  (`src/api/webui_bundle_generated.c`, produced by the new standalone tool
+  `tools/gen_webui_bundle.c`) so ordinary `make release`/`cmake --build` never need Node —
+  only `make webui-bundle` (opt-in, never in `all`/`release`/`test`) does. `GET /` and
+  `GET /assets/*` are served by the new `src/api/static_assets.c` (falls back to `index.html`
+  for unknown top-level GETs, i.e. client-side SPA routing; supports `--static-dir <path>` to
+  serve from disk in dev mode instead of the embedded bundle). `GET /` now serves the UI instead
+  of the old health-check-alias JSON — `GET /health` is unchanged and remains the real check.
+  New flags: `--web-ui <auto|on|off>` (default auto), `--static-dir <path>`.
+- Image upload: extended `chat_request`'s JSON parser (`src/api/json_parse.c`) to accept the
+  OpenAI "content parts" array form (`[{"type":"text",...},{"type":"image_url",...}]`) alongside
+  plain-string content, added a new `src/api/data_url.c` base64 `data:` URL decoder (none
+  existed in the codebase before), and extracted `main.c`'s ~150-line inline vision block (Phase
+  34) into a reusable `src/multimodal/vision_pipeline.c` — both the CLI (`--image`) and the
+  HTTP API now call the same `vision_pipeline_run()`. The server decodes an uploaded image to a
+  temp file, runs the vision pipeline, and injects the result into the KV cache before
+  generation, exactly mirroring the CLI's `--image` behavior; gracefully degrades to text-only
+  with a logged warning if the server has no `--vision`/`--proj` configured.
+- Deliberate deviations from the original plan, both justified and documented here rather than
+  silently assumed: (1) the plan's "web UI framework: llama.cpp uses SvelteKit" was matched with
+  a **plain Vite+Svelte SPA** (no SvelteKit/SSR) since this server only needs static files — SSR
+  would add machinery with no benefit here. (2) "load the vision model once at startup" was
+  **not** implemented as a persistent in-memory model; `vision_model_load_encoder/projector` are
+  `mmap`-based (confirmed by reading `vision_weights_load.c`), so reloading per-request is cheap
+  (an mmap() call + OS page cache), and keeping `vision_pipeline_run()`'s combined load+run
+  interface (matching the CLI's existing, already-tested pattern) was simpler and lower-risk than
+  splitting load/run across the connection-thread boundary.
+- `npm audit` flags 7 moderate/high advisories in the pinned Svelte 4 / Vite 5 dev-dependency
+  tree; all are either dev-server-only (esbuild, not exposed since this is a static build with no
+  dev server shipped) or Svelte SSR-specific (this is a pure client-side SPA, no SSR at all) — a
+  deliberate, documented trade-off against a costly Svelte 5 rewrite for zero applicable benefit.
+- Verified: real end-to-end Playwright testing (not just unit tests) against a live server —
+  page load, sending a message, streaming response, Stop button (mid-generation cancel), sampling
+  params panel, dark/light theme toggle all confirmed working via screenshots. `curl`/`curl --raw`
+  confirmed `GET /`, `/assets/*`, `--web-ui off` (404s), and `--static-dir` dev-mode serving.
+  Golden output (Paris/Berlin) re-verified unaffected by the vision-pipeline extraction on both
+  the CLI and (new) HTTP API paths. Image upload's graceful-degradation path (no
+  `--vision`/`--proj` configured) verified end-to-end with a real base64 PNG; the full
+  image-understanding path is *not* end-to-end verified in this environment (no vision.bin/
+  projector.bin/vision-capable GGUF available to download) — the extracted logic is otherwise
+  unchanged from the already-tested CLI code path (`tests/test_vision_components.c`,
+  `test_vision_e2e.c`), so this is a scoped, disclosed gap, not a silent one.
+- `make release/test/debug` green on gcc and clang throughout. New tests:
+  `tests/test_static_assets.c` (hand-written fake manifest, not the real bundle — keeps
+  `make test` Node-free), `tests/test_data_url.c`, and content-parts-parsing cases added to
+  `tests/test_api_server.c`.
+- Areas: `webui/**` (new), `tools/gen_webui_bundle.c` (new), `src/api/{static_assets,data_url,
+  webui_bundle_generated}.c` + `include/api/{static_assets,data_url,webui_bundle}.h` (new),
+  `src/multimodal/vision_pipeline.c` + `include/multimodal/vision_pipeline.h` (new, extracted
+  from `main.c`), `src/api/{json_parse,http_server}.c`/`include/api/{chat_request,server_config}.h`
+  (content-parts parsing, vision wiring), `src/cli/{args,main}.c`/`include/cli/args.h` (new
+  flags), `CMakeLists.txt` (new sources), `Makefile` (`webui-bundle` target), `.gitignore`
+  (`webui/node_modules/`, `webui/dist/`).
+- Branch: `claude/project-zero-ui-ux-gaps-h54mdc`.
+
 ### 2026-07-15 — Phase 22.3: CLI/REPL polish (color, progress, live tok/s, markdown)
 - What: Added `--color <auto|always|never>` (respects `NO_COLOR`), a coarse 4-stage model-load
   progress indicator (TTY in-place `\r` updates, plain one-line-per-stage otherwise), a live
