@@ -3,6 +3,35 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-15 — Phase 22.3: CLI/REPL polish (color, progress, live tok/s, markdown)
+- What: Added `--color <auto|always|never>` (respects `NO_COLOR`), a coarse 4-stage model-load
+  progress indicator (TTY in-place `\r` updates, plain one-line-per-stage otherwise), a live
+  tok/s indicator updated per-token during REPL generation, and incremental markdown rendering
+  (bold, inline code, fenced code blocks) for REPL output — handling constructs whose delimiters
+  are split across separate streamed token pieces (e.g. `"**bo"` + `"ld**"`). Regrouped
+  `--help` output into sections (Model & Generation / Hardware / Server / Multimodal / Memory &
+  RAG / Output) with worked examples. Only the REPL path is affected — the one-shot `--prompt`
+  path and the HTTP API's SSE callback are untouched, matching the plan's scoping.
+- A manual TTY smoke test (via `script`) surfaced a real UX rough edge in the first cut of the
+  markdown renderer: an unterminated code fence (common whenever `max_tokens` cuts generation off
+  mid-block) buffered the ENTIRE rest of the response until the final flush, defeating live
+  streaming. Fixed with a bounded safety valve (`MD_MAX_PENDING_UNCLOSED`, 4 KiB) — an opening
+  marker that hasn't found its close within that many buffered bytes is flushed as plain text
+  instead of waiting indefinitely, covered by a new test
+  (`test_unclosed_fence_eventually_flushes_without_waiting_for_end`).
+- Why: closes the CLI-polish gap vs. leading engines (colored output, progress bars, live stats,
+  markdown rendering) identified in the original UI/UX audit.
+- Areas: `src/cli/{color,progress,live_stats,md_render}.c` + matching headers (new),
+  `src/cli/{args,main,repl}.c`/`include/cli/args.h` (new `--color` flag, progress-stage hooks,
+  REPL composite callback), `CMakeLists.txt` (four new CLI sources registered),
+  `tests/test_{color,progress,md_render}.c` (new).
+- Result: `make release/test/debug` green on gcc and clang; new unit tests cover color
+  resolution, progress-line formatting, and markdown rendering (including the split-delimiter
+  and unclosed-construct edge cases); manual REPL smoke test under a real pty (`script`)
+  confirmed live progress stages, live tok/s updates, and markdown styling all render correctly;
+  one-shot `--prompt` golden output (Paris, 64 tok/s) unaffected.
+- Branch: `claude/project-zero-ui-ux-gaps-h54mdc`.
+
 ### 2026-07-15 — Phase 22.1: HTTP API hardening + concurrency rearchitecture
 - What: Added CORS (`--cors`/`--cors-origin`), optional API-key auth (`--api-key`), `/metrics`
   (Prometheus text exposition, `--metrics`), `/docs` + `/openapi.json` (static OpenAPI 3.0 +

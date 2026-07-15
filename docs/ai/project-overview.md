@@ -47,7 +47,7 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/sampling/` | RNG, temperature, top-k, top-p, argmax |
 | `src/memory/` | Aligned alloc, mmap |
 | `src/multimodal/` | Vision encoder/projector/bridge, image load (optional/experimental) |
-| `src/cli/` | Arg parsing, REPL, `main.c` (builds `adaptive_ai_engine`) |
+| `src/cli/` | Arg parsing, REPL, `main.c` (builds `adaptive_ai_engine`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |
 | `tests/` | Unit + audit + red/blackbox tests (every `tests/*.c` is auto-built & run) |
 | `tools/` | Model conversion + benchmark scripts |

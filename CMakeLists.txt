@@ -231,6 +231,10 @@ set(CLI_SOURCES
     src/cli/args.c
     src/cli/timer.c
     src/cli/repl.c
+    src/cli/color.c
+    src/cli/progress.c
+    src/cli/live_stats.c
+    src/cli/md_render.c
 )
 
 set(API_SOURCES

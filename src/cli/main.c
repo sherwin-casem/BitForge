@@ -20,6 +20,7 @@
 #include "tokenizer/tokenizer_gguf.h"
 #include "cli/args.h"
 #include "cli/repl.h"
+#include "cli/progress.h"
 #include "transformer/generate.h"
 #include "transformer/forward.h"
 #include "math/simd_dispatch.h"
@@ -169,6 +170,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /* Phase 22.3: coarse model-load progress (TTY-only in-place updates;
+     * degrades to plain one-line-per-stage output otherwise). Stages are
+     * named milestones, not fine-grained byte progress — threading a byte
+     * callback into the loader internals would be a loader-logic change,
+     * out of scope for CLI polish. */
+    int stdout_is_tty = isatty(fileno(stdout));
+    tn_progress_stage(1, 4, "Opening model file...", stdout_is_tty);
+
     /* Map Model File */
     MappedFile mf;
     if (mapped_file_open(&mf, args.model_path) != TN_OK) {
@@ -181,6 +190,8 @@ int main(int argc, char **argv) {
     uint32_t file_magic = 0;
     if (mf.size >= 4) memcpy(&file_magic, mf.data, 4);
     bool is_gguf = (file_magic == GGUF_MAGIC);
+
+    tn_progress_stage(2, 4, "Loading weights...", stdout_is_tty);
 
     Config p;
     TransformerWeights w;
@@ -312,6 +323,8 @@ int main(int argc, char **argv) {
         }
     }
 
+    tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
+
     /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
      * weight allocations (MLA projections, shared experts, norms) are already counted in
      * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
@@ -420,6 +433,9 @@ int main(int argc, char **argv) {
             /* Non-fatal: engine can still run if tokens passed externally */
         }
     }
+
+    tn_progress_stage(4, 4, "Ready.", stdout_is_tty);
+    tn_progress_done(stdout_is_tty);
 
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */
     RagContext rag;
