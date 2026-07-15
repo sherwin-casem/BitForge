@@ -36,6 +36,12 @@ void print_usage(const char *prog_name) {
     printf("  --server            Run as OpenAI-compatible HTTP API server (Phase 21).\n");
     printf("                      Accepts POST /v1/chat/completions requests.\n");
     printf("  --port <int>        HTTP listen port when --server is used (default: 8080).\n");
+    printf("  --cors               Enable CORS response headers (off by default).\n");
+    printf("  --cors-origin <o>    Allowed origin for CORS; repeatable, or \"*\" for any.\n");
+    printf("                       Requires --cors.\n");
+    printf("  --api-key <key>      Require 'Authorization: Bearer <key>' on API requests\n");
+    printf("                       (off by default — loopback experimentation is open).\n");
+    printf("  --metrics            Enable GET /metrics (Prometheus text exposition).\n");
     printf("  --version, -v       Print version and the SIMD backend for this CPU, then exit.\n");
     printf("  --help, -h          Print this help and exit.\n");
 }
@@ -65,6 +71,10 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->dump_tensors_path = NULL;
     args->server_mode = 0;
     args->server_port = 8080;
+    args->cors_enabled = false;
+    args->num_cors_origins = 0;
+    args->api_key = NULL;
+    args->metrics_enabled = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -129,6 +139,18 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --port must be 1–65535\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--cors") == 0) {
+            args->cors_enabled = true;
+        } else if (strcmp(argv[i], "--cors-origin") == 0 && i + 1 < argc) {
+            if (args->num_cors_origins >= CLI_MAX_CORS_ORIGINS) {
+                fprintf(stderr, "Error: too many --cors-origin values (max %d)\n", CLI_MAX_CORS_ORIGINS);
+                return TN_ERR_INVALID_CONFIG;
+            }
+            args->cors_origins[args->num_cors_origins++] = argv[++i];
+        } else if (strcmp(argv[i], "--api-key") == 0 && i + 1 < argc) {
+            args->api_key = argv[++i];
+        } else if (strcmp(argv[i], "--metrics") == 0) {
+            args->metrics_enabled = true;
         } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
             /* Short-circuit: --version must work without --model so the release
              * binary is smoke-testable on a clean machine with no model file.

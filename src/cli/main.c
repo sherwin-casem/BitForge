@@ -612,6 +612,15 @@ int main(int argc, char **argv) {
         /* Phase 21: Start OpenAI-compatible API server */
         ApiContext api_ctx;
         api_context_init(&api_ctx, &p, &w, s, &mc, &t, tp);
+
+        /* Phase 22: API hardening knobs, off by default */
+        api_ctx.server_config.cors.enabled = args.cors_enabled;
+        for (int ci = 0; ci < args.num_cors_origins; ci++) {
+            server_config_add_cors_origin(&api_ctx.server_config, args.cors_origins[ci]);
+        }
+        if (args.api_key) api_ctx.server_config.auth.api_key = strdup(args.api_key);
+        api_ctx.server_config.metrics.enabled = args.metrics_enabled;
+
         TernaryError api_err = api_server_start(args.server_port, &api_ctx);
         if (api_err != TN_OK) {
             fprintf(stderr, "Error: Failed to start API server on port %d: %s\n",

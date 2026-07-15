@@ -3,6 +3,7 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
+> Last updated: 2026-07-15.
 
 ## Entry template (copy this)
 ```
@@ -16,6 +17,41 @@
 ```
 
 ---
+
+### 2026-07-15 — "Untested socket layer" hid four real HTTP protocol bugs
+- Summary: `docs/ai/project-overview.md` had long flagged the Phase 21 HTTP server's "socket
+  layer" as untested/not-in-CI — taken at face value rather than verified. Doing the first real
+  end-to-end `curl` testing (Phase 22 API hardening) surfaced four separate, real bugs, none of
+  which any existing test caught because `tests/test_api_server.c` only exercises pure-logic
+  units (JSON parse, chat compile, SSE format) via pipes — never a real socket:
+  1. `handle_connection`'s receive loop never broke out when a request had no `Content-Length`
+     (the normal case for `GET`/`HEAD`/`OPTIONS`) — it kept calling `recv()` forever waiting for
+     a body that would never arrive, hanging indefinitely on every plain `GET /health`.
+  2. The non-streaming chat-completion path sent `Content-Length: 0` (from a `NULL` body) and
+     only *then* wrote the real JSON via a second `write()` — compliant HTTP clients stop reading
+     at 0 bytes and never see the actual response.
+  3. Streaming responses claimed `Transfer-Encoding: chunked` but the SSE writer emitted raw,
+     unframed bytes (no hex chunk-size prefixes) — a real protocol violation that curl tolerated
+     by accident but a strict client (browser `fetch`/`EventSource`) would not.
+  4. The server never called `signal(SIGPIPE, SIG_IGN)`, so any client disconnecting mid-response
+     delivered `SIGPIPE` to `write()`, whose default disposition kills the *entire* process, not
+     just that connection — trivially triggered by any short `curl --max-time`.
+- Root cause: all four are consequences of never having driven the server with a real HTTP
+  client. Logic-level pipe tests validate formatting functions in isolation but cannot catch bugs
+  in the receive-loop state machine, header/body sequencing, or process-wide signal disposition.
+- Affected files/modules: `src/api/http_server.c` (recv loop, `send_response_ex`, `SIGPIPE`),
+  `src/api/sse_stream.c`/`include/api/sse_stream.h` (new `sse_format_full_response()` so the
+  caller can compute `Content-Length` before sending headers).
+- Detection: manual `curl`/`curl --raw` end-to-end smoke testing against a real running server
+  with a real model — not caught by `make test`, ASan, UBSan, or code review of the diff alone.
+- Correction: stop reading once headers are complete and no `Content-Length` is present; build
+  the JSON body before sending headers so `Content-Length` is correct; drop the false
+  `Transfer-Encoding: chunked` claim (the response already closes the connection, so EOF
+  delimits the body per RFC 7230 §3.3.3 case 7); ignore `SIGPIPE` at server start.
+- Prevention rule: a component documented as "untested" is not verified — before extending or
+  hardening it, exercise it for real (a live server + `curl`/`curl --raw`, not just unit tests)
+  rather than trusting the label. Any new HTTP/socket work in this codebase must include a real
+  end-to-end request/response check, not only logic-level tests.
 
 ### 2026-06-07 — `make debug` never linked the sanitizer runtime / lacked `-march=native`
 - Summary: After tests passed, `make debug` failed for both compilers (undefined `__asan_*`,

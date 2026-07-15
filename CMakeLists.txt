@@ -238,6 +238,12 @@ set(API_SOURCES
     src/api/http_server.c
     src/api/json_parse.c
     src/api/sse_stream.c
+    src/api/server_config.c
+    src/api/cors.c
+    src/api/auth.c
+    src/api/metrics.c
+    src/api/openapi.c
+    src/api/cancel.c
 )
 
 set(RAG_SOURCES

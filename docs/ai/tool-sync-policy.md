@@ -10,9 +10,9 @@ session-start-checklist, commit-log-guidance, this policy. Durable knowledge liv
 ## Adapter files (concise; summarize + link to canonical)
 | Tool | Entry | Scoped rules | Workflows / skills |
 |------|-------|--------------|--------------------|
-| Claude Code | `CLAUDE.md` | `.claude/rules/{core,docs,tests,config}.md` | `.claude/skills/*/SKILL.md` |
-| GitHub Copilot | `.github/copilot-instructions.md` | `.github/instructions/{core,docs,tests,config}.instructions.md` | `.github/prompts/*.prompt.md` |
-| Antigravity | `gemini/GEMINI.md` + `AGENTS.md` | `.agents/rules/{core,docs,tests,config}.md` | `.agents/workflows/*.md` |
+| Claude Code | `CLAUDE.md` | `.claude/rules/{core,docs,tests,config,api}.md` | `.claude/skills/*/SKILL.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` | `.github/instructions/{core,docs,tests,config,api}.instructions.md` | `.github/prompts/*.prompt.md` |
+| Antigravity | `gemini/GEMINI.md` + `AGENTS.md` | `.agents/rules/{core,docs,tests,config,api}.md` | `.agents/workflows/*.md` |
 
 `AGENTS.md` is a portability mirror; keep it synchronized with `gemini/GEMINI.md` on durable
 repo-wide rules. (Both currently also carry the GitNexus MCP block — preserve it.)
@@ -38,13 +38,9 @@ rule actually exists. This repo's natural scopes today: `core` (engine/memory/sa
 `tests`, `config` (build + GGUF/runtime config). A `simd/math` scope is a candidate future
 addition — add only when justified.
 
-**`api` scope — justified as of Phase 22** (`src/api/` gained CORS/auth/metrics/OpenAPI/cancel/
-concurrency-rearchitecture surface plus the embedded web UI). Add `.claude/rules/api.md` +
-`.github/instructions/api.instructions.md` + `.agents/rules/api.md` summarizing: routes are
-hand-rolled (no external HTTP lib), CORS/auth default OFF, only one `generate_with_callback` in
-flight at a time (mutex-serialized, second concurrent request gets 429), and the web UI bundle
-is generated/committed (never hand-edit `webui_bundle_generated.c`; edit `webui/src` + run
-`make webui-bundle`).
+**`api` scope — added Phase 22.1** (`src/api/` gained CORS/auth/metrics/OpenAPI/cancel/
+concurrency-rearchitecture surface). Adapters added: `.claude/rules/api.md`,
+`.github/instructions/api.instructions.md`, `.agents/rules/api.md`.
 
 ## Drift check
 At session start and before task completion, confirm adapters still match the canonical docs;

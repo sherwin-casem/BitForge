@@ -3,6 +3,40 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-15 — Phase 22.1: HTTP API hardening + concurrency rearchitecture
+- What: Added CORS (`--cors`/`--cors-origin`), optional API-key auth (`--api-key`), `/metrics`
+  (Prometheus text exposition, `--metrics`), `/docs` + `/openapi.json` (static OpenAPI 3.0 +
+  hand-rolled docs page, no Swagger-UI dependency), and `POST /v1/chat/completions/cancel`
+  (stop an in-flight generation). Rearchitected `http_server.c` from one serial listener thread
+  to a detached-per-connection-thread model, with a `generation_mutex` serializing only the
+  actual `generate_with_callback` calls (a second concurrent chat request gets `429` immediately
+  rather than blocking). `generate_with_callback`'s `TokenCallback` now returns `int` (0 =
+  continue, nonzero = stop early) so cancellation can actually halt the generation loop, not just
+  the client's view of it. Raised `HTTP_MAX_BODY_BYTES` 512 KiB → 8 MiB ahead of Phase 22.2's
+  image uploads.
+- Real end-to-end testing (live server + `curl`/`curl --raw` against the SmolLM2-135M demo
+  model) surfaced and fixed four pre-existing HTTP protocol bugs the "untested socket layer"
+  label had been masking — see `docs/ai/mistakes.md` (2026-07-15 entry) for the full list
+  (recv-loop hang on bodyless GETs, `Content-Length: 0` sent before the real non-streaming body,
+  a false `Transfer-Encoding: chunked` claim over unframed bytes, and no `SIGPIPE` handling).
+  Also fixed a bug introduced by the new cancel feature itself: the id registered internally was
+  the raw id, but clients only ever see the `"chatcmpl-"`-prefixed id in the stream, so a client
+  echoing it back to the cancel endpoint would never match — fixed by registering under the same
+  public, prefixed id the client observes.
+- Why: closes the biggest UI/UX gap vs. leading engines (CORS/auth/metrics/docs/cancel) and is a
+  prerequisite for Phase 22.2's web UI (needs real CORS + a working stop button).
+- Areas: `src/api/{server_config,cors,auth,metrics,openapi,cancel,http_server,sse_stream}.c` +
+  matching headers, `src/transformer/generate.c`/`include/transformer/generate.h` (callback
+  return type), `src/cli/{args.c,main.c}`/`include/cli/args.h` (new flags), `CMakeLists.txt`
+  (six new API sources registered), `tests/test_{cors,auth,metrics,cancel,openapi}.c` (new).
+- Result: `make release/test/debug` green on gcc and clang (ASan/UBSan); a ThreadSanitizer build
+  of the full engine showed zero race warnings under concurrent traffic (metrics/models/health/
+  docs requests firing while a generation held the mutex, correctly getting `429` for concurrent
+  generation attempts); golden output ("Paris"/"Berlin") unchanged through both the CLI and the
+  now-hardened API; manual verification of CORS allow/deny, auth 401/200, streaming, non-
+  streaming, and mid-stream cancellation all confirmed working via live curl sessions.
+- Branch: `claude/project-zero-ui-ux-gaps-h54mdc`.
+
 ### 2026-07-15 — Phase 22.0: docs groundwork for Web UI & API/DX hardening
 - What: Recorded the Phase 22 plan (web chat UI via Vite+Svelte embedded in the binary, HTTP API
   hardening with a concurrency rearchitecture, CLI/REPL polish, mandatory design-QA + regression
