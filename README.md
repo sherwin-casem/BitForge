@@ -14,7 +14,7 @@
   <img src="docs/demo_bitnet.gif" width="720" alt="Project Zero: BitNet b1.58-2B-4T live demo on i5-11300H">
 </p>
 
-[Benchmarks](#benchmarks) · [Quick Start](#quick-start) · [Help Wanted](#help-wanted) · [Docs](docs/)
+[Benchmarks](#benchmarks) · [Quick Start](#quick-start) · [UI/UX](#ui-ux) · [Help Wanted](#help-wanted) · [Docs](docs/)
 
 ---
 
@@ -256,6 +256,43 @@ Requirements: GCC or Clang, pthreads, libm. No other dependencies.
 Key flags: `--temperature`, `--top-p`, `--seed`, `--classifier {bf16|int8|int4|auto}`, `--server --port 8080`, `--memory-db path.vrdb`, `--image photo.jpg --vision vision.bin --proj projector.bin`
 
 Full flag reference and REPL commands: run `./adaptive_ai_engine --help`
+
+---
+
+<a id="ui-ux"></a>
+
+## UI/UX
+
+**Web chat UI** — a browser-based chat interface embedded directly in the binary (no separate
+install): streaming responses, adjustable sampling parameters, stop/cancel mid-generation, a
+dark/light theme, and image upload (when the server is started with `--vision`/`--proj`).
+
+```bash
+./adaptive_ai_engine --model models/smollm2.gguf --server --port 8080
+# open http://127.0.0.1:8080/ in a browser
+```
+
+| Light | Dark |
+|---|---|
+| ![Web UI — light theme](docs/design/screenshots/03-reply-light-2026-07-15T22-39-24-616Z.png) | ![Web UI — dark theme](docs/design/screenshots/05-dark-2026-07-15T22-39-24-616Z.png) |
+
+**CLI/REPL polish** — colored output (`--color auto\|always\|never`, respects `NO_COLOR`), a
+model-load progress indicator, a live tok/s status line during generation, and markdown/code
+rendering in the interactive REPL:
+
+![CLI REPL — color, markdown rendering, live tok/s](docs/design/screenshots/cli-repl.png)
+
+**HTTP API hardening** — CORS (`--cors`/`--cors-origin`), optional API-key auth (`--api-key`,
+off by default), Prometheus metrics (`--metrics` → `GET /metrics`), interactive docs
+(`GET /docs`, `GET /openapi.json`), and a cancel endpoint (`POST /v1/chat/completions/cancel`)
+that actually stops an in-flight generation, backed by a concurrency rearchitecture (per-
+connection threads + a generation mutex) so static/metrics/docs requests are never blocked
+behind a running chat completion.
+
+Design decisions are checked against a written [design-principles reference](docs/design/ui-ux-principles.md)
+before being accepted — see the [Phase 22.4 review](docs/design/review-2026-07-15.md) for the
+full pass/fail breakdown (one real bug and one design-checklist violation were caught and fixed
+during that review, not just cosmetic nits).
 
 ---
 

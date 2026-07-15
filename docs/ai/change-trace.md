@@ -3,6 +3,42 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-15 — Phase 22.4: Design QA, regression re-verification, README
+- What: Wrote `docs/design/ui-ux-principles.md` (the checklist every UI/UX screenshot is graded
+  against — best-practice checklist, explicit anti-patterns, a concrete "avoid the generic
+  AI-generated look" list, symmetry/Gestalt principles). Built the screenshot capture tooling
+  (`tools/screenshots/webui/chat.spec.mjs` — Playwright directly against a live server;
+  `tools/screenshots/cli/capture.mjs` — `script(1)` + `@xterm/xterm` in a headless Playwright
+  page, chosen over a hand-rolled ANSI-to-HTML converter so cursor movement/in-place updates
+  render pixel-accurately). Captured and reviewed real screenshots of both the web UI (empty
+  state, streaming, Stop button, sampling params, dark theme) and the CLI (color, markdown
+  rendering, live tok/s) — full pass/fail writeup in `docs/design/review-2026-07-15.md`. Added a
+  "UI/UX" section to `README.md` with the accepted screenshots.
+- The design-QA pass caught two real issues, not just cosmetic nits — proof the gate does what
+  it's meant to: (1) `webui/src/lib/ImageUpload.svelte` used a 📎 emoji as its only icon,
+  violating the anti-pattern list I'd just written — replaced with an inline SVG. (2) A real bug:
+  the REPL's live tok/s status line (`\r` + overwrite) was clobbering the actual streamed
+  response text, since both wrote to the same terminal row with no forced newline between them —
+  only visible in a real screenshot, not in any unit test. Fixed in `src/cli/live_stats.c` via
+  save-cursor/jump-to-last-row/restore-cursor (full writeup in `docs/ai/mistakes.md`).
+- Regression safety net (mandatory per the Phase 22 plan): re-ran golden-output checks (Paris/
+  Berlin) on both the CLI and HTTP API paths after all Phase 22 structural changes (concurrency
+  rearchitecture, vision-pipeline extraction, live-stats fix) — unchanged. Also caught and fixed
+  a purely self-inflicted verification mistake twice during this phase: switching compiler/build
+  type (e.g. `make debug CC=clang` → `make release CC=gcc`) without `make clean` in between
+  leaves stale object files linked into what looks like a "release" build but is actually still
+  ASan/UBSan-instrumented — always `make clean` between differing CC/build-type combinations.
+- `npm audit` note carried over from 22.2 still applies (dev-dependency-only, SSR-specific
+  advisories that don't apply to this static SPA).
+- Verified: `make release/test/debug` green on gcc and clang after the `live_stats.c` fix; live
+  end-to-end re-verification of the web UI (Playwright) and CLI (real terminal capture) with the
+  fix applied, confirmed correct.
+- Areas: `docs/design/{ui-ux-principles,review-2026-07-15}.md` (new), `docs/design/screenshots/`
+  (new, 6 images), `tools/screenshots/**` (new), `src/cli/live_stats.c` (bug fix),
+  `webui/src/lib/ImageUpload.svelte` (emoji→SVG fix), `README.md` (new UI/UX section),
+  `docs/ai/mistakes.md`.
+- Branch: `claude/project-zero-ui-ux-gaps-h54mdc`.
+
 ### 2026-07-15 — Phase 22.2: Web chat UI (Vite+Svelte, embedded bundle) + image upload
 - What: Added `webui/` — a Vite+Svelte SPA (chat window, streaming responses, sampling
   controls, dark/light theme, model info, image upload) built via `npm --prefix webui run

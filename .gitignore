@@ -13,6 +13,9 @@ nohup.out
 webui/node_modules/
 webui/dist/
 
+# Phase 22.4: screenshot-capture tooling's installed dependency (xterm.js)
+tools/screenshots/cli/node_modules/
+
 # Placeholder / zero-byte stub model files
 models/qwen2.5-7b.bin
 

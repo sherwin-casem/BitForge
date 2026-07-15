@@ -17,7 +17,14 @@ import { createRequire } from 'module';
 import { mkdirSync } from 'fs';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+let chromium;
+try {
+  ({ chromium } = require('playwright'));
+} catch {
+  // Fall back to this environment's global install (not on the default
+  // module resolution path for a script under tools/screenshots/).
+  ({ chromium } = require('/opt/node22/lib/node_modules/playwright'));
+}
 
 const port = process.env.PZ_PORT || '8080';
 const outDir = process.argv[2] || 'docs/design/screenshots';

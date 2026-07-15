@@ -9,9 +9,18 @@
 // Usage:
 //   node tools/screenshots/cli/capture.mjs <output.png> [caption] -- <command...>
 //
-// Example:
+// For interactive input (e.g. the REPL), set PZ_CAPTURE_STDIN to the lines
+// to feed in (newline-separated) — without it, stdin is closed immediately
+// (fine for one-shot --prompt runs, but an interactive REPL would just see
+// EOF and exit before generating anything).
+//
+// Example (one-shot):
 //   node tools/screenshots/cli/capture.mjs docs/design/screenshots/cli-repl.png \
 //     -- ./adaptive_ai_engine --model models/smollm2.gguf --color always --threads 2
+//
+// Example (REPL):
+//   PZ_CAPTURE_STDIN=$'Explain **bold** briefly\n/quit' \
+//     node tools/screenshots/cli/capture.mjs out.png -- ./adaptive_ai_engine --model models/smollm2.gguf
 //
 // Requires: `script` (util-linux, present on this Linux environment),
 // the `playwright` package (global at /opt/node22/lib/node_modules/playwright
@@ -27,7 +36,13 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+let chromium;
+try {
+  ({ chromium } = require('playwright'));
+} catch {
+  // Fall back to this environment's global install.
+  ({ chromium } = require('/opt/node22/lib/node_modules/playwright'));
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,12 +67,17 @@ async function main() {
   const rawLogPath = join(workDir, 'raw.log');
 
   const commandStr = command.map((s) => `'${s.replace(/'/g, `'\\''`)}'`).join(' ');
-  execFileSync('script', ['-qec', commandStr, rawLogPath], { stdio: 'ignore', timeout: 60000 });
+  const stdinText = process.env.PZ_CAPTURE_STDIN;
+  execFileSync('script', ['-qec', commandStr, rawLogPath], {
+    input: stdinText !== undefined ? stdinText + '\n' : undefined,
+    stdio: stdinText !== undefined ? ['pipe', 'ignore', 'ignore'] : 'ignore',
+    timeout: 60000,
+  });
 
   const raw = readFileSync(rawLogPath);
 
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 900, height: 560 } });
+  const page = await browser.newPage({ viewport: { width: 900, height: 1200 } });
   await page.goto(pathToFileURL(join(__dirname, 'capture.html')).href);
   await page.waitForFunction(() => window.pzTerm !== undefined);
 

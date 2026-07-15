@@ -18,6 +18,32 @@
 
 ---
 
+### 2026-07-15 — Live tok/s indicator overwrote the streamed response text
+- Summary: the REPL's live tok/s status line (`\r` + overwrite + `\x1b[K`) clobbered the actual
+  response text every single token, because both were written to the same terminal row with no
+  forced newline between them — a screenshot taken for design QA showed the response reduced to
+  a couple of stray characters, with the stats line sitting where the reply should have been.
+- Root cause: `\r` moves the cursor to the start of whatever line it currently occupies; since
+  streamed response tokens don't force their own line, the live-stats update and the response
+  text shared a cursor position, so each stats redraw erased the response printed so far on that
+  row.
+- Affected files/modules: `src/cli/live_stats.c` (`tn_live_stats_render`).
+- Detection: a real terminal screenshot taken for the Phase 22.4 design-QA pass — not caught by
+  `tests/test_progress.c`/`test_color.c`/`test_md_render.c`, which test formatting logic in
+  isolation, not interaction between two features writing to the same terminal row. A second,
+  smaller mistake compounded this while fixing it: the first attempt used `"\x1b7"` as a single
+  string-literal escape, which C parses greedily as one (invalid, out-of-range) hex escape
+  because `7` is a valid hex digit — had to split it into `"\x1b" "7"`.
+- Correction: save the cursor (`\x1b7`), jump to the terminal's last row (`\x1b[999;1H` —
+  terminals clamp an out-of-range row to their actual height, no need to query real size), print
+  the stats there, restore the cursor (`\x1b8`) — the standard "status line" technique, and it
+  never touches the response's own cursor position.
+- Prevention rule: two features that both write control sequences to the same stream/terminal
+  must be verified together with a real render (screenshot or manual terminal check), not just
+  unit-tested independently — formatting-logic tests cannot catch cross-feature terminal-state
+  interaction. Also: never write a bare `\xNN` immediately followed by another hex digit in a C
+  string literal — split into separate literal segments.
+
 ### 2026-07-15 — "Untested socket layer" hid four real HTTP protocol bugs
 - Summary: `docs/ai/project-overview.md` had long flagged the Phase 21 HTTP server's "socket
   layer" as untested/not-in-CI — taken at face value rather than verified. Doing the first real
