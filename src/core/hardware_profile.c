@@ -485,6 +485,7 @@ void tn_hardware_profile_set_classifier(TnClassifierFormat fmt) {
     if (!g_initialized) return;
 
     g_profile.classifier_fmt = fmt;
+    g_profile.classifier_explicit = true;
 
     /* Recalculate data-per-token and ceiling */
     double cls_bytes;

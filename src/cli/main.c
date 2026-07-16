@@ -283,22 +283,6 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
-        /* --classifier only affects the LM head dispatch in forward.c's
-         * non-Q2_0 branch (parallel_matmul_i4/i8/bf16). Q2_0-native Qwen3.5
-         * models keep token embedding + LM head as zero-copy raw Q2_0
-         * unconditionally (materializing a separate BF16/INT8/INT4 copy
-         * would cost ~5 GB for a 248320x5120 vocab — see gguf_loader.c's
-         * q35_is_q2_0_model comment) — the earlier "Classifier: X
-         * (user-selected)" printout and hardware-profile Data/token/Ceiling
-         * numbers reflect that request, not what the model actually runs.
-         * Say so explicitly instead of silently no-op'ing a flag the user
-         * asked for. */
-        if (w.q35_is_q2_0_model && args.classifier_override >= 0) {
-            fprintf(stderr,
-                "[warning] --classifier has no effect on this model: it is Q2_0-native "
-                "(zero-copy LM head), so the classifier precision you selected is not "
-                "applied — see docs/ai/decision-log.md.\n");
-        }
     } else {
         printf("Model format: native ternary\n");
 

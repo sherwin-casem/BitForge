@@ -2,10 +2,22 @@
 #include "core/gguf_quant.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
+#include "core/hardware_profile.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+
+/* Round-to-nearest-even float32 -> bf16 (truncate the low 16 mantissa bits
+ * after rounding, not a plain truncation — avoids a small but real one-sided
+ * bias across the whole classifier tensor). */
+static inline tn_u16 f32_to_bf16_round(float f) {
+    tn_u32 bits;
+    memcpy(&bits, &f, sizeof(bits));
+    tn_u32 rounding_bias = ((bits >> 16) & 1u) + 0x7FFFu;
+    bits += rounding_bias;
+    return (tn_u16)(bits >> 16);
+}
 
 /* ── GGUFWeightStore — growable list of heap buffers to free on cleanup ──── */
 
@@ -709,10 +721,9 @@ static TernaryError weights_from_gguf_qwen35(
     w->rms_final_weight = norm_to_f32(hdr, "output_norm.weight", (size_t)dim, store);
     if (!w->rms_final_weight) return TN_ERR_INVALID_WEIGHTS;
 
-    /* Token embedding + LM head: kept as zero-copy raw Q2_0 (dequantizing
-     * either fully to F32 would need ~5 GB for this model's 248320×5120
-     * vocab — see embed_token()'s q2_0 branch and forward.c's classifier
-     * dispatch, both gated on q35_is_q2_0_model). */
+    /* Token embedding: always kept as zero-copy raw Q2_0 — embedding lookup
+     * only ever touches one row per token, so there's no bandwidth reason to
+     * materialize the whole table regardless of classifier format. */
     {
         const GGUFTensor *temb = gguf_find_tensor(hdr, "token_embd.weight");
         if (!temb || temb->type != GGUF_TYPE_Q2_0) {
@@ -728,6 +739,37 @@ static TernaryError weights_from_gguf_qwen35(
         }
         w->q35_output_raw = tout->data;
         w->q35_is_q2_0_model = true;
+
+        /* LM head: kept as zero-copy raw Q2_0 by default (materializing a
+         * dense copy of the 248320x5120 vocab would cost ~2.5 GB for BF16,
+         * ~1.3 GB for INT8, ~0.6 GB for INT4). Only pay that cost when the
+         * user explicitly asked for a specific --classifier format —
+         * forward.c's dispatch then uses the materialized copy instead of
+         * always falling back to raw Q2_0 regardless of the flag (the bug
+         * this replaces — see docs/ai/mistakes.md). */
+        const TnHardwareProfile *hw_cls = tn_hardware_profile_get();
+        if (hw_cls && hw_cls->classifier_explicit) {
+            size_t vocab = (size_t)cfg->vocab_size;
+            size_t d     = (size_t)dim;
+            float *tmp_f32 = (float *)malloc(vocab * d * sizeof(float));
+            tn_u16 *bf16_buf = (tn_u16 *)malloc(vocab * d * sizeof(tn_u16));
+            if (tmp_f32 && bf16_buf) {
+                gguf_dequant_q2_0(tmp_f32, tout->data, vocab * d);
+                for (size_t i = 0; i < vocab * d; i++) {
+                    bf16_buf[i] = f32_to_bf16_round(tmp_f32[i]);
+                }
+                if (store_add(store, bf16_buf) == 0) {
+                    w->wcls = bf16_buf;
+                    weights_build_classifier_quant(w, cfg);
+                } else {
+                    free(bf16_buf);
+                    bf16_buf = NULL;
+                }
+            } else {
+                free(bf16_buf);
+            }
+            free(tmp_f32);
+        }
     }
 
     w->layers_are_ternary = false;
