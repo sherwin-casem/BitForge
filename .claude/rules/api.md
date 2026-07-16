@@ -1,7 +1,7 @@
 # Claude rule: api (HTTP server, src/api/)
 
 Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
-`docs/ai/mistakes.md` (2026-07-15 socket-layer bugs).
+`docs/ai/mistakes.md` (2026-07-15 socket-layer bugs; 2026-07-16 shutdown-path bugs).
 
 - Hand-rolled HTTP/1.1 over raw sockets — no external HTTP library. Loopback-only by default.
 - CORS (`--cors`/`--cors-origin`) and API-key auth (`--api-key`) are both **off by default** —
@@ -19,3 +19,10 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
   (see the 2026-07-15 mistakes.md entry: four real bugs hid behind that label).
 - `signal(SIGPIPE, SIG_IGN)` is required in `api_server_start()` — any client disconnect mid-write
   otherwise kills the whole process.
+- `api_server_stop()` must call `shutdown(ctx->server_fd, SHUT_RDWR)` **before** `close()` — a
+  bare `close()` from another thread does not reliably wake a concurrent blocking `accept()` on
+  Linux (confirmed by an actual hang, see the 2026-07-16 mistakes.md entry). `--server` mode's
+  Ctrl+C/SIGTERM handling in `main.c` (a `sigaction`-installed handler + a `while
+  (!g_shutdown_requested) pause();` loop, not a bare `pause()`) is what makes this path reachable
+  at all — don't revert to a bare `pause()`, it silently makes all of `api_server_stop()` and
+  `main()`'s later cleanup dead code again.

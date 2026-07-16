@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>   /* pause() for --server mode */
+#include <signal.h>   /* SIGINT/SIGTERM graceful-shutdown handler, --server mode */
 #include "core/platform.h"
 #include "core/config.h"
 #include "core/moe_config.h"
@@ -52,6 +53,19 @@
 #define PZ_STRINGIFY2(x) #x
 #define PZ_STRINGIFY(x) PZ_STRINGIFY2(x)
 #define PZ_VERSION_STR PZ_STRINGIFY(PZ_VERSION)
+
+/* --server mode graceful shutdown: set only by handle_shutdown_signal (the
+ * only async-signal-safe thing to do in a handler is set a sig_atomic_t
+ * flag), polled by the main thread's wait loop below. Scoped to --server
+ * mode only — installed right before the blocking wait, not at process
+ * start, so REPL/one-shot Ctrl+C behavior (immediate kill, default
+ * disposition) is unchanged. */
+static volatile sig_atomic_t g_shutdown_requested = 0;
+
+static void handle_shutdown_signal(int sig) {
+    (void)sig;
+    g_shutdown_requested = 1;
+}
 
 int main(int argc, char **argv) {
     CliArgs args;
@@ -512,8 +526,32 @@ int main(int argc, char **argv) {
                     args.server_port, tn_error_str(api_err));
         } else {
             printf("Press Ctrl+C to stop.\n");
-            /* Block main thread — listener runs in background thread */
-            pause();
+
+            /* Graceful shutdown: previously a bare pause() with no signal
+             * handler installed meant SIGINT/SIGTERM used the default
+             * disposition (terminate immediately) — pause() never actually
+             * returns under default disposition, so api_server_stop() and
+             * all of main()'s later cleanup (tokenizer_free, gguf_header_free,
+             * mapped_file_close, etc.) were unreachable dead code in server
+             * mode. Installing a handler makes the signal "caught" instead
+             * of fatal, which is what makes pause() return. */
+            struct sigaction sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sa_handler = handle_shutdown_signal;
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = 0;
+            sigaction(SIGINT, &sa, NULL);
+            sigaction(SIGTERM, &sa, NULL);
+
+            /* Block main thread — listener runs in background thread.
+             * Loop (not a single pause()) so a signal that arrived between
+             * installing the handler and the first pause() call — setting
+             * the flag before we ever wait — is still honored immediately
+             * rather than requiring a second signal. */
+            while (!g_shutdown_requested) {
+                pause();
+            }
+            printf("\nShutting down...\n");
             api_server_stop(&api_ctx);
         }
     } else if (args.prompt) {

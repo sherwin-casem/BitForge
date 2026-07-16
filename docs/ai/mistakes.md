@@ -3,7 +3,7 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-15.
+> Last updated: 2026-07-16.
 
 ## Entry template (copy this)
 ```
@@ -17,6 +17,47 @@
 ```
 
 ---
+
+### 2026-07-16 — --server mode's Ctrl+C never ran cleanup; fixing it exposed 2 more real bugs
+- Summary: `--server` mode's shutdown path (`api_server_stop()` and all of `main()`'s later
+  cleanup — `tokenizer_free`, `gguf_header_free`, `mapped_file_close`, etc.) had been dead code
+  since forever: `main.c` called a bare `pause()` with no signal handler installed, so
+  SIGINT/SIGTERM used the default disposition (immediate process termination) — `pause()` never
+  actually returns under default disposition. Fixed by installing a `sigaction` handler
+  (SIGINT + SIGTERM) that sets a `volatile sig_atomic_t` flag, and replacing the bare `pause()`
+  with `while (!g_shutdown_requested) pause();`, scoped to only the `--server` block so
+  REPL/one-shot Ctrl+C behavior (immediate kill) is unchanged. Verified: server now exits 0 and
+  prints "Shutting down..." on Ctrl+C, under gcc release, gcc debug (ASan/UBSan), and clang debug
+  (ASan/UBSan) alike.
+- **Making that dead code reachable for the first time immediately exposed two more real,
+  previously-latent bugs** (this is exactly why "add the missing handler" isn't a one-line
+  change — code that's never executed can hide anything):
+  1. `api_server_stop()`'s `close(ctx->server_fd)` alone does not reliably wake the listener
+     thread's blocking `accept()` call on Linux (POSIX explicitly leaves this unspecified; in
+     practice it just hangs). Confirmed directly: sending SIGINT hung the process indefinitely
+     (still running per `ps` well past any reasonable timeout) until fixed by calling
+     `shutdown(ctx->server_fd, SHUT_RDWR)` *before* `close()` — the standard, reliable way to
+     unblock a concurrent `accept()`.
+  2. Testing the debug/ASan/UBSan build's server path (never previously done, since there was
+     no reachable clean-shutdown path to test through) surfaced a genuine, unrelated UBSan
+     finding: `src/tokenizer/tokenizer_gguf.c` read GGUF metadata numeric arrays (`scores`,
+     `token_type`) via a raw `(const float *)`/`(const int32_t *)` pointer cast into the mmap'd
+     file and direct array indexing — an unaligned load, since GGUF packs metadata byte-tight
+     with no alignment guarantee for array start offsets. UBSan: "misaligned address ... requires
+     4 byte alignment". Fixed both sites with `memcpy` into a local before use — the exact same
+     idiom `gguf_reader.c`'s own `read_u32`/`read_u64` already use for scalar header fields, and
+     that `str_cursor_next` already uses for string arrays; only these two numeric-array reads
+     had skipped it.
+- Affected files/modules: `src/cli/main.c`, `src/api/http_server.c`,
+  `src/tokenizer/tokenizer_gguf.c`.
+- Detection: (1) manual `kill -INT` test against a running `--server` instance — exit code and
+  log output. (2) direct observation via `ps` that the process hung after SIGINT despite the
+  signal handler firing. (3) UBSan output during a debug-build server test.
+- Correction: see summary above for each of the three fixes.
+- Prevention rule: **exercising a previously-dead code path for the first time is a real test,
+  not a formality** — budget for finding and fixing whatever it turns up, not just confirming the
+  originally-requested change compiles. This is a direct instance of the bug-fix policy: don't
+  stop at the first fix found: keep testing until the whole newly-reachable path is clean.
 
 ### 2026-07-16 — Tokenizer + GGUF header cleanup skipped on the common code path (real leaks)
 - Summary: a ~1.2MB ASan leak (49,186 allocations) appeared during Phase 22.5 verification.

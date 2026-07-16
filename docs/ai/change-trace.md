@@ -1,7 +1,38 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-07-15.
+> Update after each meaningful sub-step. Last updated: 2026-07-16.
+
+### 2026-07-16 — Graceful --server shutdown (SIGINT/SIGTERM handler + flag-polling loop)
+- What: `main.c`'s `--server` block used a bare `pause()` with no signal handler installed, so
+  Ctrl+C (SIGINT) or `kill` (SIGTERM) used the default disposition — immediate process
+  termination — meaning `pause()` never returned and `api_server_stop()` plus all of `main()`'s
+  cleanup (`tokenizer_free`, `gguf_header_free`, `mapped_file_close`, `run_state_free`, etc.,
+  several of them freshly added earlier the same day) was unreachable dead code in server mode.
+  Added a `sigaction`-installed handler for SIGINT+SIGTERM that sets a
+  `volatile sig_atomic_t g_shutdown_requested` flag (the only async-signal-safe action a handler
+  can take), and replaced the bare `pause()` with `while (!g_shutdown_requested) pause();`.
+  Scoped entirely inside the `--server` branch, installed right before the wait — REPL and
+  one-shot `--prompt` Ctrl+C behavior (immediate kill) is unchanged.
+- Making that dead code reachable for the first time immediately surfaced two more real,
+  previously-latent bugs (documented in full in `docs/ai/mistakes.md`, 2026-07-16):
+  1. `api_server_stop()`'s `close(ctx->server_fd)` alone doesn't reliably unblock the listener
+     thread's concurrent blocking `accept()` on Linux — confirmed by an actual hang (process
+     still running well past a generous timeout after SIGINT). Fixed by calling
+     `shutdown(ctx->server_fd, SHUT_RDWR)` before `close()`.
+  2. Testing the debug/ASan/UBSan build's server path for the first time (previously untestable —
+     no reachable clean-shutdown path) surfaced a genuine unrelated UBSan finding: two GGUF
+     metadata numeric-array reads in `src/tokenizer/tokenizer_gguf.c` (`scores`, `token_type`)
+     did a raw pointer-cast-and-index over a zero-copy mmap pointer with no alignment guarantee
+     — an unaligned load. Fixed via `memcpy` into a local, the same idiom already used elsewhere
+     in this file (`str_cursor_next`) and in `gguf_reader.c`'s own scalar-field readers.
+- Verification: all six gcc/clang × release/test/debug combinations green (clean `make clean`
+  between each); golden "capital of France" output and tok/s unaffected; graceful SIGINT shutdown
+  (exit code 0, "Shutting down..." printed, `api_server_stop()` actually runs) manually verified
+  against gcc release, gcc debug (ASan/UBSan), and clang debug (ASan/UBSan) builds — no sanitizer
+  errors in any of them, confirming the three fixes together.
+- Affected files: `src/cli/main.c`, `src/api/http_server.c`, `src/tokenizer/tokenizer_gguf.c`,
+  `docs/ai/mistakes.md`.
 
 ### 2026-07-16 — Animated GIF of the CLI banner reveal + shimmer for the README
 - What: a single screenshot can't show the banner's slide-up reveal or its post-reveal shimmer,

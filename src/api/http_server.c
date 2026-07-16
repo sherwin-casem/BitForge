@@ -849,7 +849,17 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
 void api_server_stop(ApiContext *ctx) {
     if (!ctx || ctx->server_fd < 0) return;
     ctx->running = 0;
-    /* Wake the accept() call by closing the socket */
+    /* Wake the blocking accept() in listener_thread_fn. close() alone is
+     * *not* reliable here: POSIX explicitly leaves "another thread blocked
+     * in accept() on an fd this thread closes" unspecified, and in practice
+     * on Linux a bare close() from a different thread frequently does not
+     * unblock a concurrent accept() at all — confirmed by this exact hang
+     * the first time api_server_stop() became reachable (previously dead
+     * code, since main()'s pause() had no signal handler installed and so
+     * never returned). shutdown(SHUT_RDWR) first reliably makes the
+     * blocked accept() return (ECONNABORTED/EINVAL, both handled by the
+     * `if (!ctx->running) break;` check below) before the fd is closed. */
+    shutdown(ctx->server_fd, SHUT_RDWR);
     close(ctx->server_fd);
     ctx->server_fd = -1;
     if (ctx->listener_thread) {
