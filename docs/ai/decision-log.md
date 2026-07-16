@@ -1,7 +1,25 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-07-15.
+> Read at session start. Last updated: 2026-07-16.
+
+### 2026-07-16 — Process decision: bugs get fixed on discovery, not just logged
+- Decision: any bug found during a task — including pre-existing ones unrelated to what's being
+  worked on, surfaced incidentally via ASan/UBSan/ThreadSanitizer, manual/screenshot review, test
+  failures, or code reading — gets fixed in the same pass. "Pre-existing" or "unrelated to this
+  change" is no longer an acceptable reason to leave a confirmed real defect in place.
+- Trigger: a ~1.2MB ASan leak (49k+ allocations) surfaced while verifying the Phase 22.5 CLI
+  banner/spinner work was initially treated as a pre-existing, out-of-scope finding and merely
+  documented. On follow-up, traced to two real, small, fixable bugs — (1) `tokenizer_free()` in
+  `src/cli/main.c` was gated on `args.tokenizer_path`, which is unset for the common GGUF-auto-
+  load tokenizer path, so cleanup silently never ran; (2) `GGUFHeader`'s heap-allocated
+  string-metadata copies (`parse_meta_entry` in `src/core/gguf_reader.c`) had no corresponding
+  free function at all. Both fixed same-session; see `docs/ai/mistakes.md` (2026-07-16) for the
+  full writeup.
+- Canonical rule added: `docs/ai/engineering-rules.md` § "Bug-fix policy" — only exception is a
+  fix requiring a large architectural change, which must be flagged to the user explicitly
+  rather than silently fixed or silently left. Synced to all adapters (`.claude/rules/core.md`,
+  `.github/instructions/core.instructions.md`, `.agents/rules/core.md`).
 
 ### 2026-07-15 — Phase 22: Web UI & API/DX hardening — tech + scope decisions
 - Decision: project-zero has no UI/UX beyond a raw JSON API and a plain-text CLI (confirmed:

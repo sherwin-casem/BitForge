@@ -17,6 +17,10 @@
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
   correct, no kernel perf regression (A/B), docs+adapters synced, commit checkpoint proposed.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
+- **Any bug found gets fixed in the same pass, even if pre-existing/unrelated to the task** —
+  document it in `mistakes.md`, but that never substitutes for the fix. Only defer for a
+  genuinely large architectural change, and flag that to the user explicitly instead of silently
+  skipping it. See `engineering-rules.md` § Bug-fix policy.
 
 ## Build / run (verified)
 ```bash

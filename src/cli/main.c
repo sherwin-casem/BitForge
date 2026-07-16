@@ -215,12 +215,14 @@ int main(int argc, char **argv) {
 
         if (gguf_read_header(&gguf_hdr, mf.data, mf.size) != TN_OK) {
             fprintf(stderr, "Failed to parse GGUF header.\n");
+            gguf_header_free(&gguf_hdr);
             mapped_file_close(&mf);
             threadpool_destroy(tp);
             return 1;
         }
         if (config_from_gguf(&p, &gguf_hdr) != TN_OK) {
             fprintf(stderr, "Failed to read config from GGUF metadata.\n");
+            gguf_header_free(&gguf_hdr);
             mapped_file_close(&mf);
             threadpool_destroy(tp);
             return 1;
@@ -527,14 +529,19 @@ int main(int argc, char **argv) {
         embedder_free(&rag.emb);
         vector_db_close(&rag.db);
     }
-    if (args.tokenizer_path) {
-        tokenizer_free(&t);
-    }
+    /* tokenizer_free is safe unconditionally: t was memset to zero above,
+     * and both load paths (--tokenizer file, or GGUF auto-load) populate
+     * the same fields it frees. Previously gated on args.tokenizer_path,
+     * which skipped cleanup entirely for the GGUF-auto-load path — the
+     * common case when no external --tokenizer is passed — leaking the
+     * whole vocab (~49k strings) every run. */
+    tokenizer_free(&t);
     run_state_free(s);
     free(s);
     if (mc.is_moe) moe_weights_free(&w, &mc);
     weights_free_pointers(&w);
     if (gguf_store) weights_free_gguf(gguf_store);
+    if (is_gguf) gguf_header_free(&gguf_hdr);
     mapped_file_close(&mf);
     threadpool_destroy(tp);
 

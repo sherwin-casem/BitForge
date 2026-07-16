@@ -3,6 +3,36 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-16 — Fixed two real ASan leaks + added canonical bug-fix policy + web UI how-to guide
+- What: the ~1.2MB ASan leak noticed during Phase 22.5 verification was fixed rather than left
+  as a documented-but-unfixed finding. Root causes: (1) `tokenizer_free(&t)` in `src/cli/main.c`
+  was gated on `args.tokenizer_path`, which is unset for the common GGUF-auto-load tokenizer
+  path — now called unconditionally (safe: `t` is zeroed before either load path, and
+  `tokenizer_free` no-ops cleanly on a zeroed struct). (2) `GGUFHeader`'s heap-allocated
+  string-metadata copies had no free function at all — added `gguf_header_free()`
+  (`src/core/gguf_reader.c`/`.h`), called from `main.c`'s cleanup path and both GGUF-parse-failure
+  early returns. Verified clean (zero LeakSanitizer output) on both the one-shot `--prompt` and
+  REPL paths after the fix, where both previously leaked on every run.
+- Added `docs/ai/engineering-rules.md` § "Bug-fix policy" (any bug found gets fixed in the same
+  pass, even pre-existing/unrelated ones — only large architectural fixes get deferred, and only
+  with an explicit flag to the user). Synced to `CLAUDE.md`, `.claude/rules/core.md`,
+  `.github/instructions/core.instructions.md`, `.agents/rules/core.md`. Recorded as a process
+  decision in `docs/ai/decision-log.md` and the leak root-causes in `docs/ai/mistakes.md`
+  (both 2026-07-16).
+- Added `docs/WEBUI_GUIDE.md` — the how-to guide that was missing: starting the server/web UI,
+  every web UI control (composer, Stop, Params sliders, theme toggle, image upload, model info
+  panel), REPL commands (`/quit`, `/context`, `/think`, `/agent`, `/memory ...`), CLI flags
+  (`--color`, `--web-ui`, `--static-dir`, `--cors*`, `--api-key`, `--metrics`), and an HTTP route
+  reference table. Linked prominently from the top of the README's UI/UX section (previously
+  that section was screenshots + short blurbs only, with no actual usage walkthrough).
+- Verification: gcc + clang × release/test/debug all green; golden "capital of France" output
+  and tok/s unaffected; fresh screenshots confirm the REPL (banner/spinner/shimmer) still
+  renders correctly post-fix.
+- Affected files: `src/cli/main.c`, `src/core/gguf_reader.c`, `include/core/gguf_reader.h`,
+  `docs/ai/engineering-rules.md`, `CLAUDE.md`, `.claude/rules/core.md`,
+  `.github/instructions/core.instructions.md`, `.agents/rules/core.md`,
+  `docs/ai/decision-log.md`, `docs/ai/mistakes.md`, `docs/WEBUI_GUIDE.md` (new), `README.md`.
+
 ### 2026-07-16 — Phase 22.5 (continued): Live generation spinner + banner shimmer
 - What: user asked for a "moving logo" like Claude Code's animated working indicator, on top of
   the one-time startup banner reveal. Added `tn_live_stats_spinner_frame()` (pure function of

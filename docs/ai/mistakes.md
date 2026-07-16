@@ -18,6 +18,43 @@
 
 ---
 
+### 2026-07-16 — Tokenizer + GGUF header cleanup skipped on the common code path (real leaks)
+- Summary: a ~1.2MB ASan leak (49,186 allocations) appeared during Phase 22.5 verification.
+  Initially, incorrectly, treated as "pre-existing and unrelated to this change" and merely
+  documented rather than fixed — corrected after the user pushed back that pre-existing bugs
+  found during any task must be fixed, not just logged (see decision-log.md, same date). Tracing
+  it surfaced two distinct real bugs, both present since long before this session:
+  1. `src/cli/main.c`'s final cleanup called `tokenizer_free(&t)` only `if
+     (args.tokenizer_path)` — but `args.tokenizer_path` is only set when an external
+     `--tokenizer <file>` is passed. The far more common path, `tokenizer_load_from_gguf()`
+     auto-loading the tokenizer straight from the model's own GGUF metadata (used by every run
+     in this session with no `--tokenizer` flag), populated the exact same `Tokenizer` fields
+     but the guard skipped freeing them — leaking the entire vocab (49,152 strings), scores,
+     sorted index, chat template, and special-token list on every single invocation.
+  2. `GGUFHeader` (`src/core/gguf_reader.c`) heap-allocates a NUL-terminated copy for every
+     `GGUF_VAL_STRING` metadata entry (`parse_meta_entry`, since on-disk GGUF strings aren't
+     NUL-terminated) — but no free function for `GGUFHeader` existed anywhere in the codebase,
+     so every string-typed metadata value (11 of them for this model) leaked too.
+- Root cause (both): cleanup code was written for one loading path and not audited against the
+  other; a data structure gained a heap-allocating field without a matching destructor ever
+  being added.
+- Affected files/modules: `src/cli/main.c`, `src/core/gguf_reader.c`,
+  `include/core/gguf_reader.h`.
+- Detection: `make debug` (ASan/UBSan) on a real model load — LeakSanitizer's exit-time report;
+  confirmed both were present on the prior commit too (identical byte/allocation counts with and
+  without the Phase 22.5 changes), so genuinely pre-existing, not introduced by this session.
+- Correction: (1) call `tokenizer_free(&t)` unconditionally in the cleanup section — safe
+  because `t` is `memset` to zero before either load path, and `tokenizer_free` already no-ops
+  cleanly on a zeroed/already-freed struct (`free(NULL)`, `vocab_size == 0` loop). (2) added
+  `gguf_header_free(GGUFHeader *hdr)` (frees only the `GGUF_VAL_STRING` entries' heap copies;
+  array/tensor data are zero-copy mmap pointers, untouched), called from `main.c`'s cleanup path
+  and both early-return GGUF-parse-failure branches.
+- Prevention rule: when a struct gains a heap-allocating field, its free function must be
+  added/updated in the same change, and audited against **every** code path that populates the
+  struct, not just the one path being actively tested. See the new "Bug-fix policy" in
+  `engineering-rules.md`: a leak found while working on something else still gets fixed, not
+  just logged as a known issue.
+
 ### 2026-07-16 — Banner glyph separator rendered as a solid block, not a gap
 - Summary: the new CLI startup banner (`src/cli/banner.c`, "PROJECT ZERO" block-font splash)
   rendered as an unreadable wall of `#` characters instead of legible letters when first

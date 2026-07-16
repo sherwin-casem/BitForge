@@ -263,6 +263,9 @@ Full flag reference and REPL commands: run `./adaptive_ai_engine --help`
 
 ## UI/UX
 
+> Full how-to (starting the server, every web UI control, REPL commands, CLI flags, API routes):
+> [`docs/WEBUI_GUIDE.md`](docs/WEBUI_GUIDE.md).
+
 **Web chat UI** — a browser-based chat interface embedded directly in the binary (no separate
 install): streaming responses, adjustable sampling parameters, stop/cancel mid-generation, a
 dark/light theme, and image upload (when the server is started with `--vision`/`--proj`).
