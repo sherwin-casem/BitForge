@@ -7,6 +7,15 @@ test_image.png
 nohup.out
 *.gguf
 
+# Phase 22.2: webui/ build artifacts — src/api/webui_bundle_generated.c
+# (produced from webui/dist/ via `make webui-bundle`) IS committed; these
+# are not.
+webui/node_modules/
+webui/dist/
+
+# Phase 22.4: screenshot-capture tooling's installed dependency (xterm.js)
+tools/screenshots/cli/node_modules/
+
 # Placeholder / zero-byte stub model files
 models/qwen2.5-7b.bin
 
