@@ -142,6 +142,51 @@ All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/s
 
 **Run it yourself and post your result:** [Discussion #3 — community benchmarks](https://github.com/shifulegend/project-zero/discussions/3)
 
+### Qwen 3.5/3.6 (Ternary-Bonsai-27B, hybrid Gated-DeltaNet + GQA, Q2_0 ternary) — 4-core Xeon VM
+
+**Thread scaling, Project Zero vs. llama.cpp** — same prompt, same identical `Ternary-Bonsai-27B-Q2_0.gguf` file, greedy decoding, 60-token cap, run **strictly sequentially** (one process at a time, full exit before the next starts):
+
+| Threads | Project Zero (tok/s) | llama.cpp (tok/s) | PZ Gain |
+|---|---|---|---|
+| 1 | 0.86 | 0.2 | +330% |
+| 2 | 1.62 | 0.4 | +305% |
+| 3 | 2.31 | 0.6 | +285% |
+| 4 | **2.74** | 0.8 | +243% |
+
+Project Zero scales near-linearly across all 4 physical cores with no plateau — 4 threads is confirmed as the throughput-optimal setting on this host, not an unverified assumption. llama.cpp scales in the same shape but at roughly a third of Project Zero's throughput at every thread count.
+
+<p align="center">
+  <img src="docs/qwen35_thread_scaling.png" width="720" alt="Ternary-Bonsai-27B thread scaling: Project Zero vs llama.cpp, 1-4 threads">
+</p>
+
+**Peak-run terminal screenshots (t=4) and t=1 for comparison:**
+
+| PZ · t=4 · **2.74 tok/s** | llama.cpp · t=4 · **0.8 tok/s** | PZ · t=1 · **0.86 tok/s** | llama.cpp · t=1 · **0.2 tok/s** |
+|---|---|---|---|
+| ![PZ t4](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/pz_t4_peak.png) | ![llama.cpp t4](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/llamacpp_t4_peak.png) | ![PZ t1](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/pz_t1.png) | ![llama.cpp t1](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/llamacpp_t1.png) |
+
+All 8 screenshots (t=1..4 × 2 engines): [`benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/)
+
+**Classifier precision (BF16 / INT8 / INT4), at the confirmed-best 4 threads:**
+
+| Classifier | tok/s | Data/token (MB) | Ceiling (tok/s @ 100% BW) | DRAM BW measured (GB/s) |
+|---|---|---|---|---|
+| BF16 | 1.07 | 1149 | 10.2 | 12.3 |
+| INT8 | 1.09 | 836 | 11.2 | 9.9 |
+| INT4 | 1.07 | 680 | 14.0 | 10.0 |
+
+<p align="center">
+  <img src="docs/qwen35_classifier_comparison.png" width="640" alt="Classifier precision comparison: BF16 vs INT8 vs INT4 tok/s on Ternary-Bonsai-27B">
+</p>
+
+Honest result: INT4's classifier data footprint is 41% smaller than BF16's (1149→680 MB/token, from the engine's own byte-accurate tensor accounting), but measured end-to-end throughput did **not** show a corresponding gain in this run — differences are within this host's own run-to-run measurement noise (DRAM bandwidth reading varied 9.9–12.3 GB/s across these 3 back-to-back runs on the same idle hardware). Reported as measured, not adjusted to fit an expected story.
+
+Screenshots: [`classifier_bf16.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_bf16.png) · [`classifier_int8.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int8.png) · [`classifier_int4.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int4.png)
+
+A real, previously-hidden bug was found and fixed while collecting the classifier data: every `--classifier` run initially crashed with `SIGILL` on this host. Root cause — this virtualized (Firecracker) host's CPUID advertises AVX-512VBMI support that the underlying execution unit cannot actually retire; both this build's compile-time detection and the engine's own runtime CPUID probe agreed VBMI was available, but executing a VBMI instruction faulted. Fixed with a one-time, execution-verified startup check (a SIGILL-trapped self-test) that replaces blind CPUID trust with real verification before any code path uses VBMI. Full writeup in [`docs/ai/mistakes.md`](docs/ai/mistakes.md).
+
+Full interactive write-up (live charts, hover tooltips, full input/output transcripts for every run): see the benchmark artifact linked from this repo's PR/session history.
+
 ---
 
 <a id="quick-start"></a>
