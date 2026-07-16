@@ -290,6 +290,10 @@ hand-crafted 5-row block font, no external figlet dependency) that finishes with
 dim/bold shimmer, shown for the REPL and `--server` mode and suppressed for scripted one-shot
 `--prompt` runs — TTY-gated, so no escape codes ever leak into piped/redirected output:
 
+![CLI startup banner — animated reveal and shimmer](docs/demo_banner_shimmer.gif)
+
+Static frame, for reference:
+
 ![CLI startup banner — animated ASCII-art "PROJECT ZERO"](docs/design/screenshots/06-cli-startup-banner-2026-07-16T01-03-52Z.png)
 
 **Live "thinking" spinner** — a continuously animated braille spinner (bold cyan), advancing

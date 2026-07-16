@@ -3,6 +3,40 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-16 — Animated GIF of the CLI banner reveal + shimmer for the README
+- What: a single screenshot can't show the banner's slide-up reveal or its post-reveal shimmer,
+  so added `tools/screenshots/cli/capture-gif.mjs` — a new sibling to `capture.mjs` that captures
+  `script(1)`'s *timed* output (`--log-timing`, not just the final bytes) and replays it
+  frame-by-frame through the same xterm.js/Playwright harness, screenshotting after every timed
+  write, then encodes the frames into an animated GIF via the new `gifenc`/`pngjs` dev
+  dependencies (pure-JS, no native deps — `pngjs` decodes each PNG screenshot back to raw RGBA
+  for `gifenc` to palette-quantize and encode). Replay is trimmed to the chunk containing a
+  configurable marker string (default `"Project Zero Engine"`, the line printed immediately
+  after `tn_banner_print()` returns) so the GIF captures exactly the animation, not whatever
+  prints next.
+- Two real bugs found and fixed while building this (screenshot review caught both, same as the
+  Phase 22.4 design-QA pattern): (1) the crop's row offset assumed `script(1)`'s own "Script
+  started on ... [COMMAND=...]" header line always occupies exactly one terminal row — false;
+  it wraps across a variable number of rows depending on the command's string length (long
+  absolute paths push it past 100 columns easily), so a fixed "skip 1 row" offset cut into the
+  banner. Fixed by detecting the banner's actual start row at runtime: do one non-timed full
+  write of the whole animation slice into a throwaway page, then scan for the first row
+  containing a `'#'` glyph column (the banner's own block-font content — the header line never
+  contains one). (2) the crop's per-row pixel height was computed from `#term`'s own bounding
+  box, which includes `capture.html`'s 16px CSS padding on all sides — dividing a padded box by
+  the row count overestimates each row's height and throws the crop off by a visible row.
+  Fixed by measuring `.xterm-screen` (the unpadded rendered-rows container) instead.
+- Output: `docs/demo_banner_shimmer.gif` (14 frames: ~11 real animation frames at their actual
+  45ms/90ms timings, plus 2 held frames on the settled state before the loop repeats), embedded
+  in the README's UI/UX section above the existing static banner screenshot.
+- Verification: visually confirmed by loading the actual generated GIF in a real (non-headless
+  logic) browser page at multiple playback timestamps — an early frame shows the partial
+  bottom-up reveal in progress, a late frame shows the fully legible, correctly-cropped
+  "PROJECT ZERO" banner with no header-line leakage.
+- Affected files: `tools/screenshots/cli/capture-gif.mjs` (new), `tools/screenshots/cli/
+  package.json`, `tools/screenshots/cli/package-lock.json`, `docs/demo_banner_shimmer.gif` (new),
+  `README.md`.
+
 ### 2026-07-16 — Fixed two real ASan leaks + added canonical bug-fix policy + web UI how-to guide
 - What: the ~1.2MB ASan leak noticed during Phase 22.5 verification was fixed rather than left
   as a documented-but-unfixed finding. Root causes: (1) `tokenizer_free(&t)` in `src/cli/main.c`
