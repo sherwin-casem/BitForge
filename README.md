@@ -283,11 +283,17 @@ rendering in the interactive REPL:
 ![CLI REPL — color, markdown rendering, live tok/s](docs/design/screenshots/cli-repl.png)
 
 **Startup banner** — an animated ASCII-art "PROJECT ZERO" splash (bottom-up slide-in reveal, a
-hand-crafted 5-row block font, no external figlet dependency), shown for the REPL and
-`--server` mode and suppressed for scripted one-shot `--prompt` runs — TTY-gated, so no escape
-codes ever leak into piped/redirected output:
+hand-crafted 5-row block font, no external figlet dependency) that finishes with a brief
+dim/bold shimmer, shown for the REPL and `--server` mode and suppressed for scripted one-shot
+`--prompt` runs — TTY-gated, so no escape codes ever leak into piped/redirected output:
 
 ![CLI startup banner — animated ASCII-art "PROJECT ZERO"](docs/design/screenshots/06-cli-startup-banner-2026-07-16T01-03-52Z.png)
+
+**Live "thinking" spinner** — a continuously animated braille spinner (bold cyan), advancing
+once per streamed token next to the live tok/s status line, the same idea as Claude Code's
+animated indicator while it's actively working:
+
+![CLI live spinner during generation, plus the banner shimmer](docs/design/screenshots/07-cli-spinner-and-shimmer-2026-07-16T01-44-29Z.png)
 
 **HTTP API hardening** — CORS (`--cors`/`--cors-origin`), optional API-key auth (`--api-key`,
 off by default), Prometheus metrics (`--metrics` → `GET /metrics`), interactive docs

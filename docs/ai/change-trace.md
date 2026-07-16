@@ -3,6 +3,33 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-16 — Phase 22.5 (continued): Live generation spinner + banner shimmer
+- What: user asked for a "moving logo" like Claude Code's animated working indicator, on top of
+  the one-time startup banner reveal. Added `tn_live_stats_spinner_frame()` (pure function of
+  tick count, cycles through a standard 10-frame braille spinner) to `include/cli/live_stats.h`/
+  `src/cli/live_stats.c`; `tn_live_stats_render()` gained a `color_enabled` parameter and now
+  prepends the bold-cyan spinner glyph (distinct from the dim stats text and the green banner
+  accent) before the `[N tok, X tok/s]` status line, advancing once per streamed token. Updated
+  the one call site (`src/cli/repl.c`'s `ReplGenContext`/`repl_token_callback`) to thread
+  `color_enabled` through. Also extended `tn_banner_print()` (`src/cli/banner.c`) with a bounded
+  3-cycle dim/bold "shimmer" once the reveal finishes, rather than freezing instantly — capped at
+  3 cycles (not indefinite) since the REPL blocks on stdin for the first prompt right after,
+  so continuous animation would need a background thread, out of scope for a startup flourish.
+- Added `tests/test_live_stats.c` (new — `live_stats.c` previously had no dedicated unit test)
+  covering the new pure spinner-frame function: non-null/non-empty frames, period-10 cycling,
+  variation across the cycle, and the existing tick/init counters. `tn_live_stats_render` itself
+  remains manual/screenshot-verified only, same as the rest of this file's terminal-side-effect
+  code.
+- Verification: gcc + clang × release/test/debug all green (clean between each); golden
+  "capital of France" output and tok/s unaffected; a pre-existing, unrelated ASan leak in
+  `tokenizer_load_from_gguf`/`strdup` (~1.2MB, same byte/allocation count with and without this
+  change) was confirmed present on the prior commit too — not introduced by this work. Screenshot
+  at `docs/design/screenshots/07-cli-spinner-and-shimmer-2026-07-16T01-44-29Z.png` shows the
+  spinner live during a streaming response; addendum in `docs/design/review-2026-07-15.md`.
+- Affected files: `include/cli/live_stats.h`, `src/cli/live_stats.c`, `src/cli/repl.c`,
+  `src/cli/banner.c`, `include/cli/banner.h`, `tests/test_live_stats.c` (new),
+  `docs/design/review-2026-07-15.md`, `README.md`.
+
 ### 2026-07-16 — Phase 22.5: Animated ASCII-art CLI startup banner
 - What: identified a remaining UI/UX gap — leading CLI/LLM tools (e.g. Claude Code) show an
   animated ASCII-art name banner on startup; project-zero had none. Added

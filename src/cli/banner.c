@@ -69,14 +69,33 @@ static void compose_banner(char buf[GLYPH_ROWS][BANNER_BUF_CAP]) {
 
 /* Renders a composed glyph row as visible block characters (color_enabled)
  * or plain '#'/space (matches the glyph source directly) otherwise; '.' in
- * the glyph data means "blank" and is rendered as a space either way. */
-static void print_glyph_row(const char *row, int color_enabled) {
-    if (color_enabled) fputs(tn_color(1, TN_ANSI_BOLD), stdout);
+ * the glyph data means "blank" and is rendered as a space either way. dim
+ * selects DIM instead of BOLD intensity, used for the post-reveal pulse. */
+static void print_glyph_row(const char *row, int color_enabled, int dim) {
+    if (color_enabled) fputs(tn_color(1, dim ? TN_ANSI_DIM : TN_ANSI_BOLD), stdout);
     if (color_enabled) fputs(tn_color(1, TN_ANSI_GREEN), stdout);
     for (const char *c = row; *c; c++) {
         fputc(*c == '.' ? ' ' : '#', stdout);
     }
     if (color_enabled) fputs(TN_ANSI_RESET, stdout);
+}
+
+/* Redraws every row of the reserved block in one intensity, then moves the
+ * cursor back to the top — shared by the reveal loop and the post-reveal
+ * pulse so both redraw identically. */
+static void redraw_block(char rows[GLYPH_ROWS][BANNER_BUF_CAP], int first_visible,
+                          int color_enabled, int dim) {
+    printf("\x1b[%dA", GLYPH_ROWS); /* cursor up to the top of the reserved block */
+    for (int row = 0; row < GLYPH_ROWS; row++) {
+        if (row >= first_visible) print_glyph_row(rows[row], color_enabled, dim);
+        fputs("\x1b[K\n", stdout); /* clear any leftover chars from a previous frame, then newline */
+    }
+    fflush(stdout);
+}
+
+static void banner_sleep_ms(long ms) {
+    struct timespec ts = { .tv_sec = 0, .tv_nsec = ms * 1000000L };
+    nanosleep(&ts, NULL);
 }
 
 void tn_banner_print(int is_tty, int color_enabled) {
@@ -94,19 +113,27 @@ void tn_banner_print(int is_tty, int color_enabled) {
     for (int i = 0; i < GLYPH_ROWS; i++) putchar('\n');
 
     for (int frame = 1; frame <= GLYPH_ROWS; frame++) {
-        printf("\x1b[%dA", GLYPH_ROWS); /* cursor up to the top of the reserved block */
         int first_visible = GLYPH_ROWS - frame;
-        for (int row = 0; row < GLYPH_ROWS; row++) {
-            if (row >= first_visible) print_glyph_row(rows[row], color_enabled);
-            fputs("\x1b[K\n", stdout); /* clear any leftover chars from a previous frame, then newline */
-        }
-        fflush(stdout);
-        if (frame < GLYPH_ROWS) {
-            /* ~45ms per frame; skip the wait after the last one. nanosleep
-             * (not usleep) — usleep was removed from POSIX.1-2008 and isn't
-             * declared under this project's _POSIX_C_SOURCE=200809L. */
-            struct timespec ts = { .tv_sec = 0, .tv_nsec = 45000000L };
-            nanosleep(&ts, NULL);
+        redraw_block(rows, first_visible, color_enabled, /*dim=*/0);
+        /* ~45ms per frame; skip the wait after the last one. nanosleep (not
+         * usleep) — usleep was removed from POSIX.1-2008 and isn't declared
+         * under this project's _POSIX_C_SOURCE=200809L. */
+        if (frame < GLYPH_ROWS) banner_sleep_ms(45);
+    }
+
+    /* A brief "shimmer" flourish (dim <-> bold) once fully revealed, rather
+     * than freezing the instant the last row lands — a bounded animation
+     * (not an indefinite loop: the REPL immediately blocks on stdin for the
+     * first prompt afterward, so there's no way to keep animating in the
+     * background without a dedicated thread, out of scope for a startup
+     * flourish). Only visible when color is enabled — with color off the
+     * glyphs render identically either way, so pulsing would be a no-op. */
+    if (color_enabled) {
+        for (int pulse = 0; pulse < 3; pulse++) {
+            banner_sleep_ms(90);
+            redraw_block(rows, 0, color_enabled, /*dim=*/1);
+            banner_sleep_ms(90);
+            redraw_block(rows, 0, color_enabled, /*dim=*/0);
         }
     }
     putchar('\n');

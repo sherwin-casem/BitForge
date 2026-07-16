@@ -22,13 +22,14 @@ typedef struct {
     MdRenderState md;
     TnLiveStats   live;
     int           is_tty;
+    int           color_enabled;
 } ReplGenContext;
 
 static int repl_token_callback(const char *piece, void *userdata) {
     ReplGenContext *rc = (ReplGenContext *)userdata;
     md_render_feed(&rc->md, piece);
     tn_live_stats_tick(&rc->live);
-    tn_live_stats_render(&rc->live, rc->is_tty);
+    tn_live_stats_render(&rc->live, rc->is_tty, rc->color_enabled);
     return 0;
 }
 
@@ -180,6 +181,7 @@ void run_repl(Config *p, TransformerWeights *w,
         md_render_init(&rc.md, stdout, color_enabled);
         tn_live_stats_init(&rc.live);
         rc.is_tty = is_tty;
+        rc.color_enabled = color_enabled;
 
         int64_t start_time = timer_now_us();
         generate_with_callback(p, w, s, mc, t, tp, line,
