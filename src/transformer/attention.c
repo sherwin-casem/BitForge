@@ -1,5 +1,6 @@
 #include "transformer/attention.h"
 #include "transformer/mla_attention.h"
+#include "transformer/qwen35_attention.h"
 #include "math/parallel_matmul.h"
 #include "math/matmul_f16.h"
 #include "math/rope.h"
@@ -48,6 +49,13 @@ void attention_forward(RunState *s, const TransformerWeights *w,
    * in 0-1 cycles for all non-MLA models (BitNet, Llama, Mixtral). */
   if (mc && mc->has_mla) {
     mla_attention_forward(s, w, cfg, mc, layer, pos, tp);
+    return;
+  }
+
+  /* Qwen3.5/3.6 hybrid attention (Gated DeltaNet + Gated Attention) — a
+   * third, mutually-exclusive attention family alongside MLA above. */
+  if (mc && mc->has_linear_attn) {
+    qwen35_attention_forward(s, w, cfg, mc, layer, pos, tp);
     return;
   }
 

@@ -18,6 +18,114 @@
 
 ---
 
+### 2026-07-16 — Qwen 3.6 (Ternary-Bonsai-27B) integration: 6 real bugs, found via a real model + a real reference engine
+- Context: implementing Qwen 3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention support end-to-end
+  (new files: `src/transformer/qwen35_attention.c`, `src/core/qwen35_run_state.c`,
+  `src/math/matmul_q2_0.c`) and running the actual downloaded `prism-ml/Ternary-Bonsai-27B-gguf`
+  through it. Every bug below was found only because the *real* model was actually run to
+  completion (not just compiled/unit-tested) and, for the last one, only because a second,
+  independently-implemented reference engine (a from-source build of PrismML-Eng's `llama.cpp`
+  fork, `prism` branch) was available to run the identical prompt side-by-side. This is a
+  concrete case for the project's "verify with a real end-to-end run, not just tests" principle
+  (see the 2026-07-15 API entry below) generalizing beyond the HTTP layer.
+
+  1. **Chat-template parser: keyword-argument call syntax spun forever, allocating AST nodes,
+     until OOM.** `namespace(value=0)` and `namespace(multi_step_tool=true, last_query_index=...)`
+     (used by Qwen 3.6's real `chat_template.jinja` to seed loop state) hit the call/filter
+     argument-list parser's `while (!Rparen) { push_back(parse_expr(p)); ... }` loop. `=` is not a
+     valid expression-start token, so `parse_expr` fell through to `parse_primary`'s literal-none
+     fallback *without consuming any token* — the loop never terminated, allocating a new AST node
+     every iteration: a real, reproducible multi-GB-in-seconds OOM on the actual downloaded GGUF's
+     template (confirmed via a standalone test harness against `chat_template.cpp` directly,
+     bypassing the ~100s full-engine cycle — RSS grew ~140MB/s with a fixed stack depth, proving a
+     non-advancing loop, not runaway recursion). Fixed by wrapping call/filter arguments in an
+     `NT::Kwarg` node (`parse_call_arg()`) that consumes `name =` before parsing the value — this
+     is also what actually stops the OOM, since it guarantees forward progress — plus a
+     forward-progress assertion (`p.pos == before` → throw) in both argument loops as defense in
+     depth against the next unanticipated non-advancing construct.
+  2. **Chat-template parser: `{% macro %}` bodies were skipped entirely (never executed), so every
+     message's content — routed through Qwen 3.6's `render_content` macro — rendered as empty
+     string.** This silently produced a syntactically-valid but content-free prompt (`<|im_start|>
+     user\n<|im_end|>`) with no crash, which would have made any inference benchmark meaningless.
+     Fixed by actually parsing (`parse_macro()`, new `NT::MacroDef`/`NT::Param` node types) and
+     invoking macros (positional/default/keyword parameter binding, executed in the macro's
+     *definition* scope per real Jinja semantics, output captured into a local string and returned
+     as the call's value) instead of skipping them.
+  3. **Chat-template parser: `{% set ns.attr = expr %}` (dotted target) overwrote the *whole* `ns`
+     namespace object with the RHS value instead of mutating one field**, because `parse_set` only
+     ever parsed a single bare identifier as the assignment target. Real chat templates mutate a
+     `namespace()` object's fields in exactly this way (`ns.multi_step_tool = false`). Fixed by
+     parsing a dotted path into `Node.sval` (`"ns.attr"`) and, in `NT::Set`'s exec() case, walking
+     to the target var via a new `Scope::get_ref()` and mutating `target->obj[attr]` in place.
+  4. **Chat-template lexer: `-%}`/`-}}` whitespace-control used a single `strip_next` flag
+     consumed by whatever the *next* lexed Text token happened to be** — correct only when a tag
+     is immediately followed by literal text. When two tags are source-adjacent with nothing
+     between them (`{%- endmacro -%}{{- foo }}`), the flag survived past the empty gap and
+     stripped leading whitespace off a *later, unrelated* text run instead of the (empty)
+     whitespace actually following the first tag. Found via a test comparing exact rendered
+     output (`Hello World! Hello Zig?` came out as `Hello World!Hello Zig?`, a real, silent
+     one-space corruption). Fixed by consuming the stripped whitespace directly from the source
+     cursor at the point the tag closes, instead of deferring to the next Text token.
+  5. **`q35_run_state_alloc()`'s own 600MB RAM-budget clamp on `max_seq_len` never propagated back
+     to `s->max_seq_len`.** `run_state_alloc_ex()` sets `s->max_seq_len` to the *original,
+     unclamped* seq_len earlier in `main.c`; `q35_run_state_alloc()` then computes a *smaller*
+     local `max_seq_len` to fit its fixed budget and allocates `q35_key_cache`/`q35_value_cache`
+     at that smaller size — but never updated `s->max_seq_len`. `qwen35_attention.c`'s cache-offset
+     arithmetic (`(kh * s->max_seq_len + pos) * head_dim`) trusted the stale, larger value as the
+     buffer's stride, writing out of bounds for any `kh>0` on literally the first full-attention
+     layer of the first generated token. Manifested two different ways depending on what the wild
+     write landed on: a reproducible SIGSEGV inside `qwen35_attention_forward`'s `memcpy` (caught
+     via `gdb -batch -ex run -ex bt`), and, in one run, a genuine kernel OOM-kill (`anon-rss:
+     15.9GB`) when the same out-of-bounds writes happened to fault in a large span of fresh
+     anonymous pages before hitting a truly unmapped one. Fixed by assigning
+     `s->max_seq_len = max_seq_len;` right after the budget-clamp block, so every consumer sees
+     the same (correctly-allocated-against) value.
+  6. **Gated DeltaNet's depthwise causal conv1d read `ssm_conv1d.weight` with a transposed
+     layout**, indexing it as `[conv_k][conv_dim]` (tap-major: `kernel[i*conv_dim+c]`) when the
+     tensor's actual GGUF shape is `[conv_k, conv_dim]` in `ne[]` order — i.e. `ne0=conv_k` is the
+     *fast/contiguous* axis, so the real physical layout is channel-major:
+     `kernel[c*conv_k+i]`. Confirmed from the real file's own tensor dims
+     (`blk.0.ssm_conv1d.weight [4, 10240]`) and cross-checked against llama.cpp's
+     `create_tensor(..., {ssm_d_conv, conv_dim}, ...)`, which declares dims in the same `ne0`-first
+     order. This silently read the wrong tap weight for every (tap, channel) pair outside the
+     accidental overlap on every one of the 48 linear-attention layers, corrupting every
+     DeltaNet layer's q/k/v inputs while still producing finite, plausible-looking activations
+     (no NaN, no explosion, "max_abs" growing across layers the way transformer residual streams
+     normally do) — the *only* externally visible symptom was that greedy decoding immediately
+     picked EOS as the very first generated token for every prompt tried. This is the one bug in
+     this list that pure code review against the reference source did not catch on its own: the
+     reference's math (decay/delta-rule/readout/gates) all matched exactly on inspection: it took
+     actually building and running PrismML-Eng's `llama.cpp` fork on the *identical* file and
+     prompt, getting coherent output ("Here's a thinking process: 1. **Identify the User's
+     Question**...") where project-zero got instant EOS, to prove there *was* a remaining bug
+     worth hunting for, and confirming the tensor's physical `ne[]` layout (not just its logical
+     shape) was the final, decisive check.
+- Affected files/modules: `src/tokenizer/chat_template.cpp` (parser/lexer, items 1-4),
+  `src/core/qwen35_run_state.c` (item 5), `src/transformer/qwen35_attention.c` (item 6),
+  new test `tests/test_chat_template.c` (18 cases covering items 1-4 and pre-existing behavior).
+- Detection: a standalone C++ test harness linking only `chat_template.cpp` (bypassing the ~100s
+  full-engine load cycle) for items 1-4; `gdb -batch -ex run -ex bt` plus `dmesg` OOM-kill records
+  for item 5; a second, independently-built reference engine run on the identical GGUF file and
+  prompt for item 6.
+- Correction: see per-bug descriptions above.
+- Prevention rule: (a) any recursive-descent parser loop of the shape
+  `while (!terminator) { consume_one(); }` needs an explicit forward-progress check
+  (`pos == before → throw`), not just trust that every sub-parser advances — cheap insurance
+  against the exact non-terminating-fallback class of bug in item 1; (b) a local budget/clamp
+  computed against one field (here, a `max_seq_len` parameter) must be written back to every
+  struct field other code trusts as ground truth for that same quantity — a clamp that only
+  narrows the *allocation* and not the *indexing arithmetic* is worse than no clamp, because it
+  turns a would-be large-but-valid allocation into a guaranteed out-of-bounds write; (c) for a
+  novel from-scratch architecture port, matching the reference math/control-flow via careful code
+  reading is necessary but *not sufficient* — GGUF tensor shapes are declared in `ne[]` order
+  (`ne0` = fastest/contiguous), and an easy-to-miss class of bug is indexing a *correctly-shaped*
+  tensor with the *wrong axis as the fast dimension*; the only way this was actually caught was
+  building a second, independent reference implementation and running the identical input through
+  both, then, once a divergence was proven real, checking every weight tensor's actual `ne[]`
+  order (via a small `gguf_dump.py`) against every place this code indexes into it — do this
+  systematically for *every* new tensor a novel architecture introduces, not just the ones that
+  happen to look suspicious on a first pass.
+
 ### 2026-07-16 — --server mode's Ctrl+C never ran cleanup; fixing it exposed 2 more real bugs
 - Summary: `--server` mode's shutdown path (`api_server_stop()` and all of `main()`'s later
   cleanup — `tokenizer_free`, `gguf_header_free`, `mapped_file_close`, etc.) had been dead code

@@ -113,6 +113,9 @@ static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
     case GGUF_TYPE_IQ4_NL:
         gguf_dequant_iq4_nl(buf, t->data, n_elems);
         break;
+    case GGUF_TYPE_Q2_0:
+        gguf_dequant_q2_0(buf, t->data, n_elems);
+        break;
     default:
         fprintf(stderr,
             "[gguf_loader] unsupported quant type %d ('%s') for tensor '%s'\n"
@@ -259,6 +262,35 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
 
 TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
     moe_config_init_dense(mc);
+
+    if (strcmp(hdr->arch, "qwen35") == 0) {
+        /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention.
+         * Not MoE (is_moe/has_mla stay 0) — a distinct 3rd attention family,
+         * gated purely by has_linear_attn. Key names verified against
+         * llama.cpp src/models/qwen35.cpp + a real Ternary-Bonsai-27B-Q2_0.gguf
+         * header dump (see docs/ai/decision-log.md). */
+        char k[128];
+#define MK(suffix) (snprintf(k, sizeof(k), "%s." suffix, hdr->arch), k)
+        mc->full_attention_interval = (int)gguf_meta_u32(hdr, MK("full_attention_interval"), 4);
+        mc->attn_head_dim  = (int)gguf_meta_u32(hdr, MK("attention.key_length"), 0);
+        mc->attn_rope_dim  = (int)gguf_meta_u32(hdr, MK("rope.dimension_count"), mc->attn_head_dim);
+        mc->ssm_conv_kernel    = (int)gguf_meta_u32(hdr, MK("ssm.conv_kernel"), 4);
+        mc->ssm_group_count    = (int)gguf_meta_u32(hdr, MK("ssm.group_count"), 0);
+        mc->ssm_inner_size     = (int)gguf_meta_u32(hdr, MK("ssm.inner_size"), 0);
+        mc->ssm_state_size     = (int)gguf_meta_u32(hdr, MK("ssm.state_size"), 0);
+        mc->ssm_time_step_rank = (int)gguf_meta_u32(hdr, MK("ssm.time_step_rank"), 0);
+#undef MK
+        if (mc->attn_head_dim <= 0 || mc->ssm_group_count <= 0 ||
+            mc->ssm_inner_size <= 0 || mc->ssm_state_size <= 0 ||
+            mc->ssm_time_step_rank <= 0) {
+            fprintf(stderr, "[gguf_loader] qwen35: missing/invalid ssm.* or "
+                            "attention.key_length metadata\n");
+            return TN_ERR_INVALID_CONFIG;
+        }
+        mc->has_linear_attn = 1;
+        return TN_OK;
+    }
+
     if (strcmp(hdr->arch, "deepseek2") != 0) return TN_OK;
 
     /* All keys use the model architecture prefix from the GGUF header */
@@ -597,6 +629,121 @@ static TernaryError weights_from_gguf_deepseek2(
     return TN_OK;
 }
 
+/* ── weights_from_gguf_qwen35() — Qwen3.5/3.6 hybrid attention loader ───── */
+
+/* Zero-copy loader for a Q2_0 projection weight: the whole model is Q2_0
+ * (per README: "true 1.71 bits/weight ... no high-precision escape hatches"),
+ * so unlike LOAD_PROJ above this does not fall back to F32 dequant — a 27B
+ * model fully dequantized to F32 would need ~109 GB, impossible on a normal
+ * host. Errors loudly if a tensor turns out not to be Q2_0. */
+#define Q35_LOAD_Q2_0(field, tname) do {                                   \
+    snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);             \
+    const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);               \
+    if (!_t) {                                                             \
+        fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf); \
+        return TN_ERR_INVALID_WEIGHTS;                                     \
+    }                                                                      \
+    if (_t->type != GGUF_TYPE_Q2_0) {                                     \
+        fprintf(stderr, "[gguf_loader] qwen35: '%s' must be Q2_0 (got %d '%s')\n", \
+                name_buf, (int)_t->type, gguf_type_name(_t->type));       \
+        return TN_ERR_INVALID_WEIGHTS;                                     \
+    }                                                                      \
+    (field)[l] = (tn_i8 *)_t->data; /* zero-copy raw Q2_0 bytes */        \
+} while(0)
+
+#define Q35_LOAD_NORM(field, tname, n_elems) do {                          \
+    snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);             \
+    (field)[l] = norm_to_f32(hdr, name_buf, (size_t)(n_elems), store);    \
+    if (!(field)[l]) return TN_ERR_INVALID_WEIGHTS;                        \
+} while(0)
+
+static TernaryError weights_from_gguf_qwen35(
+        TransformerWeights *w, const Config *cfg, const GGUFHeader *hdr,
+        const MoEConfig *mc, GGUFWeightStore *store) {
+
+    int dim        = cfg->dim;
+    int hidden_dim = cfg->hidden_dim;
+    int nl         = cfg->n_layers;
+    int n_head     = cfg->n_heads;
+    int head_dim   = mc->attn_head_dim;             /* NOT dim/n_heads for this arch */
+    int key_dim    = mc->ssm_group_count * mc->ssm_state_size;
+    int value_dim  = mc->ssm_inner_size;
+    int conv_dim   = key_dim * 2 + value_dim;
+    int n_v_heads  = mc->ssm_time_step_rank;
+    char name_buf[128];
+
+    for (int l = 0; l < nl; l++) {
+        Q35_LOAD_NORM(w->rms_att_weight, "attn_norm.weight", dim);
+        Q35_LOAD_NORM(w->rms_ffn_weight, "post_attention_norm.weight", dim);
+
+        /* Dense SwiGLU FFN — shared by both layer types, same as generic path */
+        Q35_LOAD_Q2_0(w->w1, "ffn_gate.weight");
+        Q35_LOAD_Q2_0(w->w3, "ffn_up.weight");
+        Q35_LOAD_Q2_0(w->w2, "ffn_down.weight");
+        w->s1[l] = w->s2[l] = w->s3[l] = 1.0f;
+
+        if (q35_layer_is_full_attn(mc, l)) {
+            /* Full attention: GQA + QK-norm + partial rotary + gated output.
+             * wq holds the combined [Q | gate] projection (width 2*n_head*head_dim). */
+            Q35_LOAD_Q2_0(w->wq, "attn_q.weight");
+            Q35_LOAD_Q2_0(w->wk, "attn_k.weight");
+            Q35_LOAD_Q2_0(w->wv, "attn_v.weight");
+            Q35_LOAD_Q2_0(w->wo, "attn_output.weight");
+            Q35_LOAD_NORM(w->q35_attn_q_norm, "attn_q_norm.weight", head_dim);
+            Q35_LOAD_NORM(w->q35_attn_k_norm, "attn_k_norm.weight", head_dim);
+            w->sq[l] = w->sk[l] = w->sv[l] = w->so[l] = 1.0f;
+        } else {
+            /* Linear attention (Gated DeltaNet) */
+            Q35_LOAD_Q2_0(w->q35_ssm_qkv,   "attn_qkv.weight");
+            Q35_LOAD_Q2_0(w->q35_ssm_gate,  "attn_gate.weight");
+            Q35_LOAD_NORM(w->q35_ssm_conv1d, "ssm_conv1d.weight", (size_t)mc->ssm_conv_kernel * conv_dim);
+            Q35_LOAD_NORM(w->q35_ssm_dt_bias, "ssm_dt.bias", n_v_heads);
+            Q35_LOAD_NORM(w->q35_ssm_a,      "ssm_a", n_v_heads);
+            Q35_LOAD_Q2_0(w->q35_ssm_alpha, "ssm_alpha.weight");
+            Q35_LOAD_Q2_0(w->q35_ssm_beta,  "ssm_beta.weight");
+            Q35_LOAD_NORM(w->q35_ssm_norm,   "ssm_norm.weight", mc->ssm_state_size);
+            Q35_LOAD_Q2_0(w->q35_ssm_out,   "ssm_out.weight");
+        }
+    }
+
+    w->rms_final_weight = norm_to_f32(hdr, "output_norm.weight", (size_t)dim, store);
+    if (!w->rms_final_weight) return TN_ERR_INVALID_WEIGHTS;
+
+    /* Token embedding + LM head: kept as zero-copy raw Q2_0 (dequantizing
+     * either fully to F32 would need ~5 GB for this model's 248320×5120
+     * vocab — see embed_token()'s q2_0 branch and forward.c's classifier
+     * dispatch, both gated on q35_is_q2_0_model). */
+    {
+        const GGUFTensor *temb = gguf_find_tensor(hdr, "token_embd.weight");
+        if (!temb || temb->type != GGUF_TYPE_Q2_0) {
+            fprintf(stderr, "[gguf_loader] qwen35: 'token_embd.weight' must be Q2_0\n");
+            return TN_ERR_INVALID_WEIGHTS;
+        }
+        w->q35_token_embd_raw = temb->data;
+
+        const GGUFTensor *tout = gguf_find_tensor(hdr, "output.weight");
+        if (!tout || tout->type != GGUF_TYPE_Q2_0) {
+            fprintf(stderr, "[gguf_loader] qwen35: 'output.weight' must be Q2_0\n");
+            return TN_ERR_INVALID_WEIGHTS;
+        }
+        w->q35_output_raw = tout->data;
+        w->q35_is_q2_0_model = true;
+    }
+
+    w->layers_are_ternary = false;
+    w->wcls_is_ternary    = false;
+    w->wcls_scale         = 1.0f;
+    w->layer_weight_type  = WEIGHT_TYPE_Q2_0;
+    (void)hidden_dim; (void)n_head;
+
+    printf("[GGUF-Q35] Weights loaded (%d layers, full_attention_interval=%d, "
+           "%d Q2_0 quantized)\n", nl, mc->full_attention_interval, nl);
+    return TN_OK;
+}
+
+#undef Q35_LOAD_Q2_0
+#undef Q35_LOAD_NORM
+
 /* ── weights_from_gguf() ──────────────────────────────────────────────────── */
 
 TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
@@ -650,6 +797,17 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         if (e2 != TN_OK) return e2;
         weights_build_classifier_quant(w, cfg);
         return TN_OK;
+    }
+
+    /* Dispatch to Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention loader.
+     * No classifier-quant build here: the LM head stays zero-copy Q2_0
+     * (see weights_from_gguf_qwen35 / forward.c's q35_is_q2_0_model branch),
+     * not the BF16 table weights_build_classifier_quant() expects. */
+    if (strcmp(hdr->arch, "qwen35") == 0) {
+        MoEConfig mc;
+        TernaryError e = moe_config_from_gguf(&mc, hdr);
+        if (e != TN_OK) return e;
+        return weights_from_gguf_qwen35(w, cfg, hdr, &mc, store);
     }
 
     int dim        = cfg->dim;

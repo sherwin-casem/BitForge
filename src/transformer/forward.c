@@ -7,6 +7,7 @@
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "math/parallel_matmul.h"
+#include "math/matmul_q2_0.h"
 #include "math/simd_dispatch.h"
 #include "transformer/attention.h"
 #include "transformer/embedding.h"
@@ -50,7 +51,11 @@ float *transformer_forward(int token, int pos, const Config *cfg,
           return s->logits;
       }
       int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-      embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
+      if (w->q35_is_q2_0_model) {
+        embed_token_q2_0(s->x, token, w->q35_token_embd_raw, dim);
+      } else {
+        embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
+      }
       if (t_step) {
           tn_step_timing_add(TN_STEP_3_TOKEN_EMBEDDING,
                              tn_step_timing_now_ns() - t_step);
@@ -105,7 +110,14 @@ float *transformer_forward(int token, int pos, const Config *cfg,
    * Weights are only quantized to the selected format (saves startup time).
    * Quality preserved: LM head only needs relative ordering for sampling.
    */
-  if (w->wcls_is_ternary) {
+  if (w->q35_is_q2_0_model) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35_output_raw,
+                          dim, cfg->vocab_size, tp);
+    if (t_step) {
+      tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+    }
+  } else if (w->wcls_is_ternary) {
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->wcls, dim, cfg->vocab_size,
                             w->wcls_scale, tp);

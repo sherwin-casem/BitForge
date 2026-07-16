@@ -3,6 +3,42 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-16.
 
+### 2026-07-16 — Qwen 3.5/3.6 hybrid-attention support: architecture, benchmark engine, and scope
+- Decision: implement full Qwen 3.5/3.6 (Gated DeltaNet + Gated-Attention hybrid) support,
+  targeting `prism-ml/Ternary-Bonsai-27B-gguf` specifically, following the existing `has_mla`
+  precedent (extend shared `MoEConfig`/`TransformerWeights`/`RunState` structs with
+  `q35_*`/`has_linear_attn`-gated fields rather than new per-arch types).
+- New tensor format: added `GGML_TYPE_Q2_0`/`gguf_dequant_q2_0`/`parallel_matmul_q2_0` for
+  PrismML's ternary Q2_0 packing. Confirmed empirically (bytes-per-tensor computed from the real
+  downloaded file, cross-checked against llama.cpp discussion #22019) that this specific file uses
+  the **group-128** variant (34B/128 elems, 2.125 bpw), not mainline ggml's canonical **group-64**
+  `block_q2_0` (18B/64 elems) — both share GGUF type ID 42, so the group size had to be derived
+  from the file, not the type. Zero-copy: token embedding and LM head stay Q2_0-raw (dequantizing
+  either fully to F32 would need ~5GB), dequanted per-row/per-token on demand.
+- Benchmark engine choice: built **PrismML-Eng/llama.cpp** (the `prism` branch), not mainline
+  ggml-org/llama.cpp, specifically because mainline's CPU/Metal Q2_0 kernel only covers the
+  group-64 packing and cannot load this project's actual downloaded group-128 file without a
+  second multi-GB download of a different GGUF variant. The fork's `QK2_0` constant (128) was
+  checked in `ggml-common.h` before building to confirm compatibility with the exact file already
+  on disk, letting both engines benchmark the identical `.gguf`.
+- Full-model verification method: rather than trusting code review alone against the reference
+  source (`src/models/qwen35.cpp`/`delta-net-base.cpp` in the same clone), correctness was proven
+  by running the identical prompt through both engines and requiring matching, coherent output —
+  this is what actually surfaced the final remaining bug (a transposed conv1d kernel read; see
+  `mistakes.md` 2026-07-16 item 6) that line-by-line math comparison against the reference source
+  had missed. Tokenization/chat-template rendering were separately confirmed byte-identical via
+  `llama-tokenize -f <rendered_prompt.txt> --ids` against project-zero's own `--verbose` dump.
+- Scope boundary: Q2_0 matmul performance (currently scalar-decode-to-stack-buffer +
+  AVX2 FMA per 128-element block) was explicitly left unoptimized — the task was correctness +
+  running the model + benchmarking existing behavior, not a performance pass. This shows up
+  directly in the benchmark: project-zero's Q2_0 kernel is markedly slower than the reference
+  engine's (see the benchmark artifact for numbers on this specific 4-core host). Flagged as a
+  known, deliberately out-of-scope follow-up rather than silently accepted.
+- Status: ACCEPTED. Full architecture verified end-to-end against the real 27B model: gcc+clang
+  release/test/debug all green (incl. new `tests/test_chat_template.c`, 18 cases), coherent
+  reasoning output produced and cross-checked token-for-token against the reference engine's
+  continuation of the same prompt.
+
 ### 2026-07-16 — Process decision: bugs get fixed on discovery, not just logged
 - Decision: any bug found during a task — including pre-existing ones unrelated to what's being
   worked on, surfaced incidentally via ASan/UBSan/ThreadSanitizer, manual/screenshot review, test

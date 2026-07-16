@@ -127,6 +127,7 @@ set(CORE_SOURCES
     src/core/mla_run_state.c
     src/core/moe_config.c
     src/core/moe_weights.c
+    src/core/qwen35_run_state.c
     src/core/run_state.c
     src/core/step_timing.c
     src/core/weights.c
@@ -148,6 +149,7 @@ set(MATH_SOURCES
     src/math/matmul_q5_1.c
     src/math/matmul_q8_0.c
     src/math/matmul_q5k.c
+    src/math/matmul_q2_0.c
     src/math/parallel_matmul.c
     src/math/quantize_i8.c
     src/math/rmsnorm.c
@@ -206,6 +208,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c
     src/transformer/moe_router.c
+    src/transformer/qwen35_attention.c
 )
 
 set(SAMPLING_SOURCES

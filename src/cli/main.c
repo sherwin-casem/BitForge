@@ -243,8 +243,9 @@ int main(int argc, char **argv) {
         }
         config_print(&p);
 
-        /* For DeepSeek-V2 GGUF: populate MoEConfig and allocate MoE weight arrays. */
-        if (strcmp(gguf_hdr.arch, "deepseek2") == 0) {
+        /* For DeepSeek-V2 (MLA+MoE) or Qwen3.5/3.6 (hybrid Gated-DeltaNet)
+         * GGUF: populate MoEConfig ahead of weight loading. */
+        if (strcmp(gguf_hdr.arch, "deepseek2") == 0 || strcmp(gguf_hdr.arch, "qwen35") == 0) {
             if (moe_config_from_gguf(&mc, &gguf_hdr) != TN_OK) {
                 fprintf(stderr, "Failed to read MoE config from GGUF.\n");
                 mapped_file_close(&mf);
@@ -375,7 +376,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (run_state_alloc(s, &p, p.seq_len) != TN_OK) {
+    /* Qwen3.5/3.6 hybrid models never read the generic key_cache/value_cache
+     * (they use their own correctly-sized q35_key_cache/q35_value_cache,
+     * allocated below) — skip_kv_cache=true avoids a multi-GB calloc+memset
+     * for those models' native (often huge, e.g. 262144) context. See
+     * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
+    if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn) != TN_OK) {
         fprintf(stderr, "Failed to allocate RunState buffers.\n");
         free(s);
         if (mc.is_moe) moe_weights_free(&w, &mc);
@@ -389,6 +395,20 @@ int main(int argc, char **argv) {
     if (mc.has_mla) {
         if (mla_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
             fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+    }
+
+    /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
+    if (mc.has_linear_attn) {
+        if (q35_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+            fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
             run_state_free(s);
             free(s);
             if (mc.is_moe) moe_weights_free(&w, &mc);
@@ -574,6 +594,15 @@ int main(int argc, char **argv) {
      * common case when no external --tokenizer is passed — leaking the
      * whole vocab (~49k strings) every run. */
     tokenizer_free(&t);
+    /* mla_run_state_free/q35_run_state_free must run before run_state_free()
+     * (they free k_rope_cache/q35_* pointer arrays that run_state_free()
+     * doesn't know about). mla_run_state_free was previously never called
+     * anywhere in the shutdown path — a real leak of k_rope_cache (n_layers
+     * malloc'd buffers) + mla_rope_freq on every DeepSeek/MLA run, only its
+     * own OOM-cleanup path called it. Fixed here alongside the new
+     * q35_run_state_free wiring (see docs/ai/mistakes.md). */
+    if (mc.has_mla) mla_run_state_free(s, p.n_layers);
+    if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
     run_state_free(s);
     free(s);
     if (mc.is_moe) moe_weights_free(&w, &mc);

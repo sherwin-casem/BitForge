@@ -3,6 +3,28 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-16.
 
+### 2026-07-16 — Qwen 3.5/3.6 hybrid-attention support (Ternary-Bonsai-27B) + benchmark
+- What: Full engine support for Qwen 3.5/3.6's hybrid Gated-DeltaNet/Gated-Attention
+  architecture and PrismML's Q2_0 ternary GGUF packing — new
+  `src/transformer/qwen35_attention.c`, `src/core/qwen35_run_state.c`, `src/math/matmul_q2_0.c`,
+  `src/core/gguf_quant.c`'s `gguf_dequant_q2_0`, plus `MoEConfig`/`TransformerWeights`/`RunState`
+  extensions (`has_linear_attn`, `q35_*` fields) mirroring the existing `has_mla` pattern. Ran the
+  real downloaded `prism-ml/Ternary-Bonsai-27B-gguf` end-to-end and fixed 6 real bugs surfaced
+  only by that real run (parser infinite loop, unexecuted macros, dotted-set namespace mutation,
+  a whitespace-control lexer bug, an OOB cache write, and a transposed conv1d tensor read) — full
+  writeup in `mistakes.md` (2026-07-16, "Qwen 3.6 integration: 6 real bugs"). Added
+  `tests/test_chat_template.c` (18 cases). Built PrismML-Eng's `llama.cpp` fork (`prism` branch,
+  group-128 Q2_0) as a benchmark/correctness comparator on the identical file.
+- Why: task requested running this specific converted model in the engine, identifying other
+  engines that can run it, and benchmarking against one of them.
+- Areas: `src/transformer/`, `src/core/`, `src/math/`, `src/tokenizer/chat_template.cpp`,
+  `include/`, `tests/test_chat_template.c`, `Makefile`, `CMakeLists.txt`, `docs/ai/mistakes.md`,
+  `docs/ai/decision-log.md`.
+- Result: gcc+clang release/test/debug all green; model produces coherent reasoning output
+  matching the reference engine's continuation of the identical prompt token-for-token up to the
+  point checked; project-zero's (unoptimized) Q2_0 kernel is markedly slower than the reference
+  engine's on this 4-core host — see the benchmark artifact for the actual numbers.
+
 ### 2026-07-16 — Graceful --server shutdown (SIGINT/SIGTERM handler + flag-polling loop)
 - What: `main.c`'s `--server` block used a bare `pause()` with no signal handler installed, so
   Ctrl+C (SIGINT) or `kill` (SIGTERM) used the default disposition — immediate process
