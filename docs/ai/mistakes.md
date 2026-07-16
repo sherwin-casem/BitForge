@@ -5,6 +5,100 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-16.
 
+### 2026-07-16 — Both previously-flagged items fixed on user pushback; `make test` alone never actually ran ASan/UBSan over library code, which hid 2 more real bugs
+- Summary: user directly challenged the earlier "flag, don't fix" calls on the Q2_0 batch/MoE VNNI
+  path and the byte-level-BPE detokenizer ("Why did u not fix the remaining 2?"). Both are now
+  fixed (see below). While re-verifying with a genuinely ASan/UBSan-instrumented full test suite
+  (see the build-methodology finding below), 2 more real, independent, pre-existing memory-safety
+  bugs surfaced and were fixed in the same pass, per the bug-fix policy.
+- **Fix 1 — Q2_0 batch/MoE VNNI path**: added `parallel_matmul_q2_0_batch_vnni()` to
+  `src/math/matmul_q2_0_vnni.c` (same w_enc bias trick as the single-matrix path, per-expert
+  quantization buffers heap-allocated since expert count `k` is a runtime value), wired into
+  `src/math/matmul_q2_0.c`'s `parallel_matmul_q2_0_batch()` with the same VNNI-first/portable-
+  fallback dispatch as the single-matrix function. Turned out to be **dead/unreachable code
+  today** — `grep` confirmed `parallel_matmul_q2_0_batch` has no real caller anywhere in the
+  engine (`moe_ffn.c` only dispatches q4k/q5_1/q5_0/q8_0 batch variants; no Q2_0-MoE model is
+  wired up yet) — so the earlier "not on the measured hot path, so left slow" justification was
+  true but not actually a reason to defer: there was no real tradeoff being avoided, just
+  unfinished work. Verified via direct synthetic unit tests in `tests/test_q2_0_matmul.c`
+  (`test_batch_matches_single_matrix_path`, `test_batch_mixed_zero_activation` — batch output
+  compared against the already-verified single-matrix path called once per expert, since there's
+  no real end-to-end caller to test through).
+- **Fix 2 — byte-level BPE detokenizer**: rewrote `src/tokenizer/tokenizer_decode.c` with the
+  full 256-entry GPT-2 byte<->unicode reverse table (`g_bpe_cp_to_byte[324]`, codepoints
+  0x000-0x143) and a UTF-8 codepoint decoder, replacing the old 2-case `clean_bpe_string()`. The
+  originally-assumed blocker ("needs a stateful multi-byte-UTF-8 accumulator across calls") turned
+  out to be **wrong** on closer inspection: since the function reverse-maps codepoints back to raw
+  *bytes* (not characters) and callers already concatenate each call's output byte-for-byte, a
+  multi-byte UTF-8 character's raw bytes reassemble correctly purely from concatenation — no
+  cross-call state needed. The real complexity was smaller than the original deferral assumed.
+  Also fixed the BOS-leading-space-strip check while in this code: it checked for a literal `' '`
+  byte, which only matches this project's native/legacy binary tokenizer format (literal text) —
+  GGUF byte-level-BPE vocabs (`tokenizer_gguf.c`) store the same leading space as the 2-byte `Ġ`
+  marker (0xC4 0xA0), which the literal check never matched, so BOS-adjacent leading spaces were
+  never stripped for GGUF-loaded models. Fixed to check both forms (native format's test coverage
+  in `test_tokenizer.c` proves the literal-space path still works unchanged). New test coverage:
+  `test_tokenizer_decode_byte_level_space`, `_latin1`, `_multibyte_emoji` (the exact ✅ mojibake
+  case, split across 3 synthetic single-byte tokens the way a real tokenizer would), `_after_bos`.
+- **Build-methodology finding**: this Makefile's generic `build/%.o: src/%.c` rule uses
+  `$(CFLAGS)` (make-variable, not hardcoded), so `debug:`/`release:` targets recursively invoke
+  `$(MAKE)` with explicit `CFLAGS="..."` overrides — but `test:` does **not**; it uses whatever
+  `CFLAGS` is already in effect (default: `CFLAGS_RELEASE`). Meanwhile the *test-binary* pattern
+  rule (`build/tests/%: ... ; $(CC) $(CFLAGS_DEBUG) ...`) is hardcoded to always use debug/ASan
+  flags for the test `.c` file itself, regardless of what built `$(LIB_OBJS)`. Net effect: a plain
+  `make test` (including the documented canonical sequence `make release && make test && make
+  debug`) compiles every test file with ASan/UBSan, but links against whatever `$(LIB_OBJS)`
+  already exist on disk — which, after a preceding `make release`, are **release-mode, not
+  instrumented**. ASan's malloc/free interposition is process-wide once *anything* links libasan,
+  so heap corruption in release-compiled library code is still often caught, but this is weaker
+  coverage than it looks and is NOT what `.claude/rules/tests.md` describes ("`make test` ...
+  under ASan/UBSan" — true for the test file, not for `$(LIB_OBJS)` in this ordering). Separately,
+  because make's staleness check is mtime-based (not flag-aware), running `make debug` right after
+  `make release && make test` is **frequently a silent no-op** — the `.o` files are already
+  "up to date" relative to unchanged `.c` sources, so the debug/sanitizer flags never actually get
+  applied, and `make debug` reports success while leaving the release-mode binary untouched. This
+  is not a regression from anything in this session — it's a pre-existing structural gap in the
+  Makefile, discovered while trying to get *real* ASan/UBSan coverage of the code touched by this
+  entry's two fixes. Verified real coverage instead via `make clean` followed by a single `make`
+  invocation with `CFLAGS`/`CXXFLAGS`/`LDFLAGS` all explicitly overridden to the debug/sanitizer
+  values before `test`, forcing every `$(LIB_OBJS)` and test binary to be freshly compiled and
+  linked with instrumentation in one consistent invocation.
+- **Bug found via the above (1) — heap-buffer-overflow in the AVX-512BW LUT ternary kernel**:
+  `lookup_and_acc()` in `src/math/ternary_matmul_lut_avx512bw.c` loaded a full 64-byte
+  (`_mm512_loadu_si512`) vector of packed weight bytes per 32-column block, but only ever used the
+  low 32 bytes (`_mm512_extracti32x8_epi32(abs_v, 0)`) — the upper half was dead computation, not
+  just wasted bandwidth. For interior column blocks this silently over-read into the next K-group's
+  row of the same buffer (wrong data used nowhere, since only the low 32 bytes are consumed, so
+  numerically harmless); for the **last** column block of the **last** K-group, it read 32 bytes
+  past the actual end of the packed-weight allocation (`P`, sized exactly `(K/5)*N` bytes, no
+  padding) — a real heap-buffer-overflow. Confirmed via ASan on `test_lut_matches_scalar_full_blocks`
+  (K5=8, N=64, P=512B exactly — the read window `[480,544)` exceeds the 512-byte allocation by
+  32 bytes). Fixed by loading exactly the needed 32 bytes via `_mm256_loadu_si256` +
+  `_mm256_abs_epi8` + `_mm256_movepi8_mask` instead of the 512-bit load, removing the dead upper
+  half entirely rather than just masking it off.
+- **Bug found via the above (2) — test harness under-allocation in `test_moe.c`**: `moe_gate_w[l]`
+  is stored as a `tn_i8*` pointer but `moe_ffn.c` casts it to `const float*` before calling
+  `moe_router_forward()` (gate weights are raw F32, unlike the ternary-quantized expert FFN
+  weights — see that file's own comment: "Gate weight is w->moe_gate_w[layer] — F32
+  [num_experts × dim]"). `test_moe.c`'s `test_moe_ffn_output_finite` allocated this buffer with
+  `calloc(dim*ne, sizeof(tn_i8))` (1 byte/element) instead of `sizeof(float)` (4 bytes/element) —
+  a 4x under-allocation that the router's AVX-512 F32 SIMD load read past. This is a test-harness
+  bug, not a source bug; fixed the allocation size in the test.
+- Detection: user pushback on the original deferral decision, prompting genuine implementation
+  rather than continued justification; the 2 new bugs surfaced only once library object files
+  were actually sanitizer-instrumented during a test run (see build-methodology finding above).
+- Correction: see each fix above. `make release`/`make test`(release-mode)/full ASan+UBSan test
+  run with genuinely instrumented `$(LIB_OBJS)`/`make debug` (from clean) all green for gcc and
+  clang.
+- Prevention rule: when a deferral decision rests on "this isn't on the hot path" or "this needs
+  a bigger rewrite than it's worth right now," verify both claims concretely (grep for real
+  callers; sketch the actual minimal fix) before accepting them — both turned out to be wrong
+  here in ways that would have been cheap to check upfront. Separately: a Makefile's `test` target
+  claiming ASan/UBSan coverage is only as strong as its actual object-file provenance — verify
+  what compiled `$(LIB_OBJS)` before trusting a "tests pass under sanitizers" claim, especially in
+  a project with a shared `build/` directory across release/debug configurations and no flag-hash
+  staleness tracking.
+
 ## Entry template (copy this)
 ```
 ### YYYY-MM-DD — <short title>
@@ -93,7 +187,10 @@
 - Affected files/modules: `src/tokenizer/tokenizer_decode.c` (not yet modified).
 - Detection: visual review of a real-model output screenshot (`project-zero-full.png`) — not
   caught by any existing test, since none exercise non-ASCII/emoji output.
-- Correction: NOT APPLIED. Flagged to the user explicitly; tracked here as an open item.
+- Correction: NOT APPLIED at the time this entry was written. **Superseded**: fixed the same day
+  after user pushback — see the 2026-07-16 entry at the top of this file ("Both previously-flagged
+  items fixed on user pushback...") for the actual fix and why the "stateful accumulator" blocker
+  assumed here turned out not to be necessary.
 - Prevention rule: a byte-level-BPE detokenizer needs the *complete* reverse byte table, not just
   the couple of remappings a given test corpus happens to touch — ASCII-only test coverage will
   never catch this class of gap. If/when this gets fixed, verify against real multi-byte UTF-8

@@ -143,14 +143,23 @@ void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
     threadpool_dispatch(tp, matmul_q2_0_task, &args, d);
 }
 
-/* ── Batched: k weight matrices, per-expert inputs ───────────────────────── *
- * Still the portable decode+FMA path unconditionally — this is the MoE
- * per-expert entry point and Ternary-Bonsai-27B is dense (MoE disabled), so
- * it was never on this session's measured hot path. Left as a known,
- * explicitly-flagged follow-up rather than silently matching the single-
- * matrix path's VNNI acceleration: same "w_enc bias trick" would apply
- * (each expert's row is independent), it just wasn't verified against a
- * real MoE-Q2_0 model in this session. */
+/* ── Batched: k weight matrices, per-expert inputs (MoE) ─────────────────── *
+ * Same VNNI-first / portable-fallback dispatch as the single-matrix path
+ * above: matmul_q2_0_vnni.c's parallel_matmul_q2_0_batch_vnni() applies the
+ * identical "w_enc bias trick" per-expert (each expert's row is independent,
+ * so the single-matrix kernel's math carries over unchanged). No Q2_0-MoE
+ * model has been wired into this engine yet — parallel_matmul_q2_0_batch is
+ * currently unreachable from any real caller (moe_ffn.c only dispatches
+ * q4k/q5_1/q5_0/q8_0 batch variants) — so this is verified via direct
+ * synthetic unit tests (tests/test_q2_0_matmul.c) rather than an end-to-end
+ * model run. Correctness parity with the portable path is what matters here,
+ * not measured speedup, since there's no real hot-path call site today. */
+
+#if TN_HAS_AVX512VNNI
+extern int parallel_matmul_q2_0_batch_vnni(float **outs, float **xs,
+                                            const uint8_t * const *ws,
+                                            int n, int d, int k, ThreadPool *tp);
+#endif
 
 typedef struct {
     float        **outs;
@@ -175,6 +184,9 @@ static void matmul_q2_0_batch_task(void *arg, int thread_id, int start, int end)
 void parallel_matmul_q2_0_batch(float **outs, float **xs,
                                  const uint8_t * const *ws,
                                  int n, int d, int k, ThreadPool *tp) {
+#if TN_HAS_AVX512VNNI
+    if (parallel_matmul_q2_0_batch_vnni(outs, xs, ws, n, d, k, tp)) return;
+#endif
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
     MatmulQ2_0BatchArgs args = {
         .outs = outs, .xs = xs, .ws = ws,

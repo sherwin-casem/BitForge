@@ -173,4 +173,81 @@ int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0,
     return 1;
 }
 
+/* ── Batched: k weight matrices, per-expert inputs (MoE) ─────────────────
+ * Same VNNI kernel as the single-matrix path above, applied per expert.
+ * Each expert has its own activation vector, so each needs its own
+ * quantization (act_scale, per-block sum_qx) — unlike the single-matrix
+ * path, k is a caller-supplied model dimension (expert count), not a
+ * compile-time bound, so these are heap-allocated for this call rather
+ * than fixed-size stack arrays. */
+typedef struct {
+    float        **outs;
+    const int8_t **q_xs;
+    const float   *act_scales;
+    const int32_t **sum_qx_blocks_per_expert;
+    const uint8_t *const *ws;
+    int            n_out, n_blocks;
+    size_t         row_bytes;
+} MatmulQ2_0BatchVnniArgs;
+
+static void matmul_q2_0_batch_vnni_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id;
+    MatmulQ2_0BatchVnniArgs *a = (MatmulQ2_0BatchVnniArgs *)arg;
+    int n_out = a->n_out;
+    for (int r = start; r < end; r++) {
+        int ei = r / n_out;
+        int ri = r % n_out;
+        if (a->act_scales[ei] == 0.0f) { a->outs[ei][ri] = 0.0f; continue; }
+        float total = dot_q2_0_row_vnni(a->ws[ei] + (size_t)ri * a->row_bytes,
+                                         a->q_xs[ei], a->sum_qx_blocks_per_expert[ei],
+                                         a->n_blocks);
+        a->outs[ei][ri] = total * a->act_scales[ei];
+    }
+}
+
+/* Returns 1 if handled, 0 if the caller should fall back (same conditions
+ * as parallel_matmul_q2_0_vnni, checked against the shared n across every
+ * expert — all experts share one weight-matrix shape). */
+int parallel_matmul_q2_0_batch_vnni(float **outs, float **xs,
+                                     const uint8_t * const *ws,
+                                     int n, int d, int k, ThreadPool *tp) {
+    if (n <= 0 || n % Q2_0V_BLOCK != 0 || n > TN_Q2_0V_MAX_N || k <= 0)
+        return 0;
+
+    int n_blocks = n / Q2_0V_BLOCK;
+    size_t row_bytes = (size_t)n_blocks * Q2_0V_BYTES;
+
+    int8_t   *q_x_storage        = (int8_t  *)malloc((size_t)k * (size_t)n * sizeof(int8_t));
+    int32_t  *sum_qx_storage     = (int32_t *)malloc((size_t)k * (size_t)n_blocks * sizeof(int32_t));
+    float    *act_scales         = (float   *)malloc((size_t)k * sizeof(float));
+    const int8_t  **q_xs         = (const int8_t  **)malloc((size_t)k * sizeof(int8_t *));
+    const int32_t **sum_qx_ptrs  = (const int32_t **)malloc((size_t)k * sizeof(int32_t *));
+    if (!q_x_storage || !sum_qx_storage || !act_scales || !q_xs || !sum_qx_ptrs) {
+        free(q_x_storage); free(sum_qx_storage); free(act_scales); free(q_xs); free(sum_qx_ptrs);
+        return 0; /* caller falls back to the portable path on OOM too */
+    }
+
+    for (int e = 0; e < k; e++) {
+        int8_t  *qx = q_x_storage    + (size_t)e * (size_t)n;
+        int32_t *sq = sum_qx_storage + (size_t)e * (size_t)n_blocks;
+        q_xs[e] = qx;
+        sum_qx_ptrs[e] = sq;
+        act_scales[e] = quantize_row_to_i8_avx512(xs[e], qx, n);
+        if (act_scales[e] == 0.0f) { memset(outs[e], 0, (size_t)d * sizeof(float)); continue; }
+        for (int b = 0; b < n_blocks; b++)
+            sq[b] = sum_i8(qx + (size_t)b * Q2_0V_BLOCK, Q2_0V_BLOCK);
+    }
+
+    MatmulQ2_0BatchVnniArgs args = {
+        .outs = outs, .q_xs = q_xs, .act_scales = act_scales,
+        .sum_qx_blocks_per_expert = sum_qx_ptrs, .ws = ws,
+        .n_out = d, .n_blocks = n_blocks, .row_bytes = row_bytes,
+    };
+    if (!tp) matmul_q2_0_batch_vnni_task(&args, 0, 0, k * d);
+    else     threadpool_dispatch(tp, matmul_q2_0_batch_vnni_task, &args, k * d);
+
+    free(q_x_storage); free(sum_qx_storage); free(act_scales); free(q_xs); free(sum_qx_ptrs);
+    return 1;
+}
+
 #endif /* TN_HAS_AVX512VNNI */

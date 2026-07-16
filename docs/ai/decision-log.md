@@ -3,6 +3,29 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-16.
 
+### 2026-07-16 — Reversed the "flag, don't fix" call on both remaining items after user pushback
+- Decision: the prior entry below deferred 2 items (Q2_0 batch/MoE VNNI path, byte-level BPE
+  detokenizer) as "flagged instead of fixed." User directly challenged that ("Why did u not fix
+  the remaining 2?"). Re-examined both from scratch rather than re-justifying the original
+  deferral, and implemented both — see `docs/ai/mistakes.md`'s top entry for full technical
+  detail. Both original blockers turned out to be weaker than assessed: the batch path had *no
+  real caller at all* (not just "off the hot path"), and the detokenizer's assumed need for
+  cross-call state didn't actually exist (byte-level concatenation is inherently stateless).
+- While re-verifying under genuinely sanitizer-instrumented library objects (a gap in this
+  session's own prior verification — `make test` alone does not actually instrument
+  `$(LIB_OBJS)`, only the test files; see mistakes.md), found and fixed 2 more independent,
+  pre-existing memory-safety bugs: a heap-buffer-overflow in the AVX-512BW LUT ternary kernel
+  (`ternary_matmul_lut_avx512bw.c`, an unnecessary 64-byte SIMD load where only 32 bytes were ever
+  used) and a 4x buffer under-allocation in `test_moe.c`'s test harness (`moe_gate_w` sized for
+  `tn_i8` when the router reads it as `float`). Both fixed per the "any bug found gets fixed in
+  the same pass" policy.
+- Verification: `make release`, `make test` (release-mode), a full ASan+UBSan test run with
+  `$(LIB_OBJS)` and all test binaries freshly compiled under sanitizer flags in one invocation
+  (not the ordering-dependent `make debug` step, which is a no-op here — see mistakes.md), and
+  `make debug` (main engine binary) from a clean tree — all green, for both gcc and clang.
+- Status: ACCEPTED. Both items closed; no known open shortcomings remain from the Qwen 3.6
+  benchmark work as of this entry.
+
 ### 2026-07-16 — Closed the Q2_0 perf gap and the remaining chat-template gaps on explicit request
 - Decision: given a direct follow-up request to "fix all shortcomings" from the earlier Qwen 3.6
   benchmark (this same day), implemented the deferred Q2_0 VNNI kernel and the contained

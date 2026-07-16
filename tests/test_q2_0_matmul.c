@@ -187,6 +187,111 @@ static void test_all_zero_activation(void) {
         TEST_ASSERT_FLOAT_EQ(out[r], 0.0f, 1e-6f, "all-zero activation yields all-zero output");
 }
 
+/*
+ * parallel_matmul_q2_0_batch (and, on this VNNI host, its internal
+ * matmul_q2_0_vnni.c fast path parallel_matmul_q2_0_batch_vnni) has no real
+ * call site yet — no Q2_0-MoE model has been wired into the engine, so
+ * moe_ffn.c never invokes it. Verified here instead by checking that batching
+ * k independent experts through the batch entry point produces bit-for-bit-
+ * equivalent results (within FP tolerance) to calling the already-verified
+ * single-matrix parallel_matmul_q2_0 once per expert — this isolates "is the
+ * batch dispatch/indexing correct" from "is the underlying dot product
+ * correct" (the latter is already covered by the tests above).
+ */
+static void test_batch_matches_single_matrix_path(void) {
+    int n = 256, d = 4, k = 3;
+    size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
+
+    uint8_t *ws_storage = (uint8_t *)malloc(row_bytes * (size_t)d * (size_t)k);
+    float *xs_storage = (float *)malloc((size_t)n * (size_t)k * sizeof(float));
+    const uint8_t *ws[3];
+    float *xs[3];
+    float *outs_batch[3];
+    float *outs_single[3];
+
+    for (int e = 0; e < k; e++) {
+        uint8_t *w = ws_storage + (size_t)e * row_bytes * (size_t)d;
+        ws[e] = w;
+        for (int r = 0; r < d; r++)
+            make_q2_0_row(w + (size_t)r * row_bytes, n, e * 101 + r + 1);
+
+        float *x = xs_storage + (size_t)e * n;
+        xs[e] = x;
+        for (int i = 0; i < n; i++)
+            x[i] = ((float)((i * (7 + e) + e) % 23) - 11.0f) * 0.31f;
+
+        outs_batch[e] = (float *)malloc((size_t)d * sizeof(float));
+        outs_single[e] = (float *)malloc((size_t)d * sizeof(float));
+    }
+
+    parallel_matmul_q2_0_batch(outs_batch, xs, ws, n, d, k, NULL);
+    for (int e = 0; e < k; e++)
+        parallel_matmul_q2_0(outs_single[e], xs[e], ws[e], n, d, NULL);
+
+    for (int e = 0; e < k; e++) {
+        for (int r = 0; r < d; r++) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "batch expert %d row %d matches single-matrix path", e, r);
+            TEST_ASSERT_FLOAT_EQ(outs_batch[e][r], outs_single[e][r], 1e-3f, msg);
+        }
+        free(outs_batch[e]);
+        free(outs_single[e]);
+    }
+    free(ws_storage);
+    free(xs_storage);
+}
+
+/* One expert's activation is all-zero, the others are not — exercises the
+ * batch VNNI path's per-expert act_scale==0 short-circuit
+ * (matmul_q2_0_vnni.c's matmul_q2_0_batch_vnni_task) independent of the
+ * other experts' normal rows. */
+static void test_batch_mixed_zero_activation(void) {
+    int n = 128, d = 2, k = 3;
+    size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
+
+    uint8_t *ws_storage = (uint8_t *)malloc(row_bytes * (size_t)d * (size_t)k);
+    float *xs_storage = (float *)calloc((size_t)n * (size_t)k, sizeof(float));
+    const uint8_t *ws[3];
+    float *xs[3];
+    float *outs[3];
+
+    for (int e = 0; e < k; e++) {
+        uint8_t *w = ws_storage + (size_t)e * row_bytes * (size_t)d;
+        ws[e] = w;
+        for (int r = 0; r < d; r++)
+            make_q2_0_row(w + (size_t)r * row_bytes, n, e * 53 + r + 1);
+
+        float *x = xs_storage + (size_t)e * n;
+        xs[e] = x;
+        if (e != 1) { /* expert 1 stays all-zero */
+            for (int i = 0; i < n; i++)
+                x[i] = ((float)((i * 3 + e) % 17) - 8.0f) * 0.41f;
+        }
+
+        outs[e] = (float *)malloc((size_t)d * sizeof(float));
+        for (int r = 0; r < d; r++) outs[e][r] = 1.0f; /* poison */
+    }
+
+    parallel_matmul_q2_0_batch(outs, xs, ws, n, d, k, NULL);
+
+    for (int r = 0; r < d; r++) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "batch expert 1 (all-zero activation) row %d is zero", r);
+        TEST_ASSERT_FLOAT_EQ(outs[1][r], 0.0f, 1e-6f, msg);
+    }
+    float ref0[2], ref2[2];
+    parallel_matmul_q2_0(ref0, xs[0], ws[0], n, d, NULL);
+    parallel_matmul_q2_0(ref2, xs[2], ws[2], n, d, NULL);
+    for (int r = 0; r < d; r++) {
+        TEST_ASSERT_FLOAT_EQ(outs[0][r], ref0[r], 1e-3f, "batch expert 0 unaffected by expert 1's zero activation");
+        TEST_ASSERT_FLOAT_EQ(outs[2][r], ref2[r], 1e-3f, "batch expert 2 unaffected by expert 1's zero activation");
+    }
+
+    for (int e = 0; e < k; e++) free(outs[e]);
+    free(ws_storage);
+    free(xs_storage);
+}
+
 int main(void) {
     RUN_TEST(test_single_block_single_row);
     RUN_TEST(test_single_block_multi_row);
@@ -194,5 +299,7 @@ int main(void) {
     RUN_TEST(test_real_model_dims);
     RUN_TEST(test_non_multiple_of_128_falls_back);
     RUN_TEST(test_all_zero_activation);
+    RUN_TEST(test_batch_matches_single_matrix_path);
+    RUN_TEST(test_batch_mixed_zero_activation);
     TEST_SUMMARY();
 }
