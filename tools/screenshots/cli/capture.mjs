@@ -14,6 +14,10 @@
 // (fine for one-shot --prompt runs, but an interactive REPL would just see
 // EOF and exit before generating anything).
 //
+// The captured command has a 60s default wall-clock budget; set
+// PZ_CAPTURE_TIMEOUT_MS to raise it for slow real-model runs (e.g. a large
+// model at a few hundred ms/token easily needs several minutes).
+//
 // Example (one-shot):
 //   node tools/screenshots/cli/capture.mjs docs/design/screenshots/cli-repl.png \
 //     -- ./adaptive_ai_engine --model models/smollm2.gguf --color always --threads 2
@@ -71,7 +75,7 @@ async function main() {
   execFileSync('script', ['-qec', commandStr, rawLogPath], {
     input: stdinText !== undefined ? stdinText + '\n' : undefined,
     stdio: stdinText !== undefined ? ['pipe', 'ignore', 'ignore'] : 'ignore',
-    timeout: 60000,
+    timeout: process.env.PZ_CAPTURE_TIMEOUT_MS ? Number(process.env.PZ_CAPTURE_TIMEOUT_MS) : 60000,
   });
 
   const raw = readFileSync(rawLogPath);
