@@ -21,6 +21,8 @@
 #include "cli/args.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
+#include "cli/banner.h"
+#include "cli/color.h"
 #include "transformer/generate.h"
 #include "transformer/forward.h"
 #include "math/simd_dispatch.h"
@@ -77,6 +79,18 @@ int main(int argc, char **argv) {
             fprintf(g_dump_fp, "layer,step,n_elem,v0,v1,v2,v3,v4,v5,v6,v7,mean,absmax\n");
             fprintf(stderr, "[dump] Writing tensors to: %s\n", args.dump_tensors_path);
         }
+    }
+
+    /* Phase 22.5: animated startup banner — TTY-gated, and only for
+     * long-running/human-watched invocations (REPL, --server), not for
+     * one-shot --prompt runs. Matches Claude Code's own convention of
+     * showing its banner interactively but suppressing it in scripted/
+     * non-interactive ("-p") mode, so piped/automated --prompt output
+     * stays clean. */
+    int stdout_is_tty = isatty(fileno(stdout));
+    int color_enabled_early = tn_color_resolve(args.color_mode, stdout_is_tty, getenv("NO_COLOR"));
+    if (stdout_is_tty && (args.server_mode || !args.prompt)) {
+        tn_banner_print(stdout_is_tty, color_enabled_early);
     }
 
     printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
@@ -169,8 +183,8 @@ int main(int argc, char **argv) {
      * degrades to plain one-line-per-stage output otherwise). Stages are
      * named milestones, not fine-grained byte progress — threading a byte
      * callback into the loader internals would be a loader-logic change,
-     * out of scope for CLI polish. */
-    int stdout_is_tty = isatty(fileno(stdout));
+     * out of scope for CLI polish. (stdout_is_tty was already computed
+     * above, ahead of the startup banner.) */
     tn_progress_stage(1, 4, "Opening model file...", stdout_is_tty);
 
     /* Map Model File */

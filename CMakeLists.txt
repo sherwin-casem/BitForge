@@ -236,6 +236,7 @@ set(CLI_SOURCES
     src/cli/progress.c
     src/cli/live_stats.c
     src/cli/md_render.c
+    src/cli/banner.c
 )
 
 set(API_SOURCES

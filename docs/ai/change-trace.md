@@ -3,6 +3,34 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-15.
 
+### 2026-07-16 — Phase 22.5: Animated ASCII-art CLI startup banner
+- What: identified a remaining UI/UX gap — leading CLI/LLM tools (e.g. Claude Code) show an
+  animated ASCII-art name banner on startup; project-zero had none. Added
+  `include/cli/banner.h`/`src/cli/banner.c`: a hand-crafted 5-row block font (no figlet/external
+  font dependency) covering the letters needed for "PROJECT ZERO", composed programmatically
+  (`compose_banner`) so letter concatenation itself can't misalign — only the individual glyphs
+  need to be correct. `tn_banner_print()` reveals the banner bottom-row-first over
+  `GLYPH_ROWS` frames (~45ms/frame via `nanosleep`, not `usleep` — removed from POSIX.1-2008 and
+  undeclared under this project's strict `_POSIX_C_SOURCE=200809L`), giving a "slide up into
+  place" effect using only cursor-up + per-line clear (portable across real terminals and
+  xterm.js). Wired into `src/cli/main.c`: shown for REPL and `--server` mode, suppressed for
+  one-shot `--prompt` runs (matches Claude Code's own interactive-vs-scripted banner behavior),
+  gated on `is_tty` so no escape codes ever leak into piped/redirected output. Registered
+  `src/cli/banner.c` in `CMakeLists.txt`.
+- Bug found and fixed during first real-terminal capture: the glyph separator was a literal
+  `' '` character, but the row-printing function only treats `'.'` as blank (anything else prints
+  as `'#'`) — every inter-letter gap rendered solid, garbling the banner. Fixed by using `'.'` as
+  the separator. Full writeup in `docs/ai/mistakes.md` (2026-07-16).
+- Verification: gcc + clang × release/test/debug all green (clean `make clean` between each,
+  per the repeated stale-object lesson this project has hit before); golden "capital of
+  France" output and tok/s unaffected (this is CLI-startup-only code, no generation-path
+  changes); real terminal screenshot captured via `tools/screenshots/cli/capture.mjs` and
+  hand-verified against the expected per-letter glyph layout — see
+  `docs/design/screenshots/06-cli-startup-banner-2026-07-16T01-03-52Z.png` and the addendum in
+  `docs/design/review-2026-07-15.md`.
+- Affected files: `include/cli/banner.h`, `src/cli/banner.c` (new), `src/cli/main.c`,
+  `CMakeLists.txt`, `docs/design/review-2026-07-15.md`, `README.md`.
+
 ### 2026-07-15 — Phase 22.4: Design QA, regression re-verification, README
 - What: Wrote `docs/design/ui-ux-principles.md` (the checklist every UI/UX screenshot is graded
   against — best-practice checklist, explicit anti-patterns, a concrete "avoid the generic

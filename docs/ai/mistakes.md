@@ -18,6 +18,26 @@
 
 ---
 
+### 2026-07-16 — Banner glyph separator rendered as a solid block, not a gap
+- Summary: the new CLI startup banner (`src/cli/banner.c`, "PROJECT ZERO" block-font splash)
+  rendered as an unreadable wall of `#` characters instead of legible letters when first
+  captured via a raw `script(1)` terminal session.
+- Root cause: `compose_banner()` joined each letter's glyph rows with a literal `' '` (space)
+  separator character, but `print_glyph_row()` only treats the glyph data's `'.'` character as
+  blank — any other character, including that literal space, is rendered as `'#'`. Every
+  inter-letter gap therefore printed as filled instead of blank.
+- Affected files/modules: `src/cli/banner.c` (`compose_banner`, `print_glyph_row`).
+- Detection: manual raw `script(1)` capture + hand-tracing the composed row string against the
+  expected per-letter glyph layout (not caught by compilation or any automated test, since the
+  file has no dedicated unit test — this is terminal-rendering-only code, same class as
+  `live_stats.c`).
+- Correction: changed the separator from `' '` to `'.'` so it's treated as blank consistently
+  with the rest of the glyph data.
+- Prevention rule: when a rendering function has a single "this character means blank" rule,
+  every code path that builds input for it (including separators/padding, not just the "real"
+  content) must emit that same blank sentinel — never a different character that happens to look
+  blank in source but isn't recognized by the renderer.
+
 ### 2026-07-15 — Live tok/s indicator overwrote the streamed response text
 - Summary: the REPL's live tok/s status line (`\r` + overwrite + `\x1b[K`) clobbered the actual
   response text every single token, because both were written to the same terminal row with no

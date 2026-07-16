@@ -282,6 +282,13 @@ rendering in the interactive REPL:
 
 ![CLI REPL — color, markdown rendering, live tok/s](docs/design/screenshots/cli-repl.png)
 
+**Startup banner** — an animated ASCII-art "PROJECT ZERO" splash (bottom-up slide-in reveal, a
+hand-crafted 5-row block font, no external figlet dependency), shown for the REPL and
+`--server` mode and suppressed for scripted one-shot `--prompt` runs — TTY-gated, so no escape
+codes ever leak into piped/redirected output:
+
+![CLI startup banner — animated ASCII-art "PROJECT ZERO"](docs/design/screenshots/06-cli-startup-banner-2026-07-16T01-03-52Z.png)
+
 **HTTP API hardening** — CORS (`--cors`/`--cors-origin`), optional API-key auth (`--api-key`,
 off by default), Prometheus metrics (`--metrics` → `GET /metrics`), interactive docs
 (`GET /docs`, `GET /openapi.json`), and a cancel endpoint (`POST /v1/chat/completions/cancel`)
