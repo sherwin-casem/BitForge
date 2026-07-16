@@ -3,6 +3,24 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-16.
 
+### 2026-07-16 — Fixed a real SIGILL crash found while benchmarking classifier precision (bf16/int8/int4)
+- Decision: while collecting a `--classifier` throughput sweep for benchmark documentation, every
+  run crashed with `SIGILL` on this host. Root-caused (via `gdb`) to AVX-512VBMI code executing
+  despite this specific virtualized (Firecracker) host's CPUID advertising VBMI support it cannot
+  actually retire. Fixed rather than working around it (e.g. by just disabling calibration or the
+  classifier sweep), per the "any bug found gets fixed in the same pass" policy — this crash would
+  hit any user on similarly-virtualized hardware on their very first run, not just this benchmark.
+  Full technical detail in `docs/ai/mistakes.md`.
+- Fix shape: added a one-time, execution-verified runtime check for AVX-512VBMI
+  (`sigaction`+`sigsetjmp` self-test in `cpu_features.c`) instead of trusting CPUID alone, and
+  converted the two consumer call sites (`bitunpack2_vnni.h`'s Q2_0/ternary unpack,
+  `parallel_matmul.c`'s INT4 classifier unpack) from compile-time-only `#if TN_HAS_AVX512VBMI`
+  branching to compiling both the VBMI and non-VBMI paths always, dispatching via the verified
+  runtime flag.
+- Status: ACCEPTED. Verified end to end: cleared the calibration cache and re-ran
+  `--classifier int4` (the exact crashing scenario) — calibration now completes both phases and
+  generation proceeds normally.
+
 ### 2026-07-16 — Reversed the "flag, don't fix" call on both remaining items after user pushback
 - Decision: the prior entry below deferred 2 items (Q2_0 batch/MoE VNNI path, byte-level BPE
   detokenizer) as "flagged instead of fixed." User directly challenged that ("Why did u not fix

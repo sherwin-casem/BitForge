@@ -13,6 +13,7 @@
 /* K-4 R-3: Pre-quantised dispatch path for VNNI backend */
 #if TN_HAS_AVX512VNNI
 #include "math/quantize_i8.h"
+#include "math/cpu_features.h"
 
 void ternary_matmul_packed_vnni_preq(float *out,
                                       const int8_t *q_x, float act_scale,
@@ -556,7 +557,17 @@ static void matmul_i4_task(void *arg, int thread_id, int start, int end) {
         /*
          * VBMI fast path: 3-instruction INT4 unpack (vs ~15 with SSE interleave).
          * vpermb replicates each byte 2×, multishift extracts nibbles, mask 0x0F.
+         *
+         * Gated by tn_cpu_features_detect()->avx512vbmi, NOT just this
+         * compile-time macro: a hypervisor can advertise AVX-512VBMI via
+         * CPUID (matching what -march=native detects at compile time too)
+         * while real execution faults with SIGILL — confirmed on a real
+         * Firecracker microVM host (see docs/ai/mistakes.md and
+         * bitunpack2_vnni.h, which hit the identical issue). Both unpack
+         * paths are always compiled in when this file has AVX-512VBMI
+         * available; the choice defers to the execution-verified flag.
          */
+        bool use_vbmi_i4 = tn_cpu_features_detect()->avx512vbmi;
 #endif
 
         for (int i = start; i < end; i++) {
@@ -566,8 +577,8 @@ static void matmul_i4_task(void *arg, int thread_id, int start, int end) {
             int j = 0;
 
 #if TN_HAS_AVX512VBMI
-            /* VBMI INT4 unpack: load 32 bytes, replicate each 2×, multishift nibbles */
-            {
+            if (use_vbmi_i4) {
+                /* VBMI INT4 unpack: load 32 bytes, replicate each 2×, multishift nibbles */
                 static const __m512i perm_i4 = {
                     (long long)0x0303020201010000LL, (long long)0x0707060605050404LL,
                     (long long)0x0b0b0a0a09090808LL, (long long)0x0f0f0e0e0d0d0c0cLL,
@@ -593,8 +604,8 @@ static void matmul_i4_task(void *arg, int thread_id, int start, int end) {
                     __m512i qxv = _mm512_loadu_si512((const __m512i *)&a->q_x[j]);
                     acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
                 }
-            }
-#else
+            } else
+#endif
             {
                 const __m256i mask_lo = _mm256_set1_epi8(0x0F);
                 for (; j + 63 < a->n; j += 64) {
@@ -617,7 +628,6 @@ static void matmul_i4_task(void *arg, int thread_id, int start, int end) {
                     acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
                 }
             }
-#endif
 
             int32_t result = _mm512_reduce_add_epi32(acc);
 

@@ -5,6 +5,7 @@
 
 #if TN_HAS_AVX512VNNI
 #include <immintrin.h>
+#include "math/cpu_features.h"
 
 /*
  * Unpack 64 packed 2-bit codes (stored in 16 bytes) into 64 uint8 lanes,
@@ -17,7 +18,7 @@
  * extracted here so the latter can reuse it verbatim instead of
  * maintaining a second copy of the same bit-trick.
  *
- * Two implementations:
+ * Two implementations, chosen at RUNTIME (not just compile time):
  *
  * 1. VBMI path (Ice Lake+, Sapphire Rapids+): 3 instructions using
  *    vpermb (byte permute) + vpmultishiftqb (per-qword multishift) + AND.
@@ -25,6 +26,17 @@
  *
  * 2. SSE path (fallback): 128-bit shifts + masks + byte interleave.
  *    Works on any AVX-512 VNNI CPU without VBMI (e.g., Cascade Lake).
+ *
+ * Selection is gated by `tn_cpu_features_detect()->avx512vbmi`, NOT just
+ * the `TN_HAS_AVX512VBMI` compile-time macro: a hypervisor can advertise
+ * AVX-512VBMI via CPUID (matching what `-march=native` detects at compile
+ * time too) while the underlying execution unit cannot actually retire the
+ * instruction — confirmed on a real Firecracker microVM host, where this
+ * used to crash with SIGILL on every first-time calibration run (see
+ * docs/ai/mistakes.md). `tn_cpu_features_detect()` execution-verifies VBMI
+ * under a SIGILL trap before setting this bit, so both variants must be
+ * compiled in whenever VBMI *could* be present, with the choice deferred
+ * to that verified runtime flag.
  */
 
 #if TN_HAS_AVX512VBMI
@@ -58,7 +70,7 @@ static const __m512i tn_bitunpack2_vbmi_shift_ctrl = {
     (long long)0x2624222006040200LL, (long long)0x2624222006040200LL
 };
 
-static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
+static inline __m512i tn_unpack64_to_wenc_u8_vbmi(const tn_u8 *row_j)
 {
     __m128i p = _mm_loadu_si128((const __m128i *)row_j);
     __m512i expanded = _mm512_permutexvar_epi8(tn_bitunpack2_vbmi_perm_idx,
@@ -67,10 +79,13 @@ static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
     return _mm512_and_si512(shifted, _mm512_set1_epi8(0x03));
 }
 
-#else /* !TN_HAS_AVX512VBMI - SSE fallback */
+#endif /* TN_HAS_AVX512VBMI */
 
 /*
- * SSE unpack path: 128-bit shifts + masks + byte interleave.
+ * SSE unpack path: 128-bit shifts + masks + byte interleave. Always compiled
+ * (needs only baseline AVX-512F/VNNI, not VBMI) — this is the fallback used
+ * whenever the verified runtime check below says VBMI isn't safe to use,
+ * and the only path compiled at all on a build without VBMI support.
  *
  * Correctness proof for _mm_srli_epi16 + AND 0x03:
  *   For a 16-bit word (H,L): (HL >> k) & 0x03 yields bits [k+1:k] of L for
@@ -80,7 +95,7 @@ static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
  *   m0[i] = w_enc[4i], m1[i] = w_enc[4i+1], m2[i] = w_enc[4i+2], m3[i] = w_enc[4i+3]
  *   unpacklo8/unpackhi8 then unpacklo16/unpackhi16 restores sequential order.
  */
-static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
+static inline __m512i tn_unpack64_to_wenc_u8_sse(const tn_u8 *row_j)
 {
     __m128i p = _mm_loadu_si128((const __m128i *)row_j);
 
@@ -108,7 +123,18 @@ static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
     return wenc;
 }
 
-#endif /* TN_HAS_AVX512VBMI */
+/* Runtime dispatch: only take the VBMI path if the CPUID bit was also
+ * execution-verified (see cpu_features.c) — never just the compile-time
+ * capability. Cached after the first call, same pattern as tn_simd_init(). */
+static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
+{
+#if TN_HAS_AVX512VBMI
+    static int s_use_vbmi = -1;
+    if (s_use_vbmi < 0) s_use_vbmi = tn_cpu_features_detect()->avx512vbmi ? 1 : 0;
+    if (s_use_vbmi) return tn_unpack64_to_wenc_u8_vbmi(row_j);
+#endif
+    return tn_unpack64_to_wenc_u8_sse(row_j);
+}
 
 #endif /* TN_HAS_AVX512VNNI */
 

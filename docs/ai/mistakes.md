@@ -5,6 +5,58 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-16.
 
+### 2026-07-16 — CPUID lied about AVX-512VBMI on this virtualized host: SIGILL crash on every first-time calibration (and any `--classifier` use)
+- Summary: while running a `--classifier` sweep for benchmark documentation, every invocation
+  crashed with `SIGILL` ("illegal instruction"), reproducibly, inside `tn_calibrate()`. Root-caused
+  under `gdb` (backtrace + disassembly at the exact faulting `$rip`) to a `vpermi2b`-family
+  AVX-512VBMI byte-permute instruction. Both this build's compile-time detection (`-march=native`
+  → `__AVX512VBMI__` → `TN_HAS_AVX512VBMI=1`) **and** the engine's own runtime CPUID probe
+  (`cpu_features.c`: `f->avx512vbmi = (ecx>>1)&1`, printed "AVX-512 VBMI : YES" in every prior run
+  this session) agreed VBMI was available — but actually *executing* a VBMI instruction faults on
+  this host. This is a Firecracker microVM (confirmed via `dmesg`); the hypervisor's CPUID leaf
+  advertises a feature bit the underlying execution unit cannot actually retire — a known class of
+  virtualization CPUID-passthrough bug, not something either compile-time or CPUID-only runtime
+  detection can catch.
+- Why it wasn't caught earlier: this session's Q2_0/tokenizer work (and the `bitunpack2_vnni.h`
+  file this same session added the VBMI fast path to) never happened to exercise the VBMI code
+  path — Q2_0 inference apparently hit the SSE fallback path in practice, or got lucky with
+  dead-code-adjacent scheduling. The crash only surfaced via `tn_calibrate()`'s Phase-2 classifier
+  benchmarking (which profiles bf16/int8/int4 unconditionally, regardless of what `--classifier`
+  the user actually requested) and via `parallel_ternary_matmul_packed`'s VNNI pre-quantization
+  fast path (itself only reachable once `TN_FORCE_BACKEND=scalar`-style calibration testing forces
+  a code path real inference doesn't normally take) — both call chains ultimately reach VBMI-gated
+  unpack code with no runtime safety net. Two independent call sites hit the identical class of bug:
+  `include/math/bitunpack2_vnni.h` (Q2_0/ternary-packed 2-bit unpack, this session's own new file)
+  and `src/math/parallel_matmul.c`'s `matmul_i4_task` (pre-existing INT4 classifier unpack).
+- Root cause: both call sites gated their VBMI-vs-fallback code selection with `#if
+  TN_HAS_AVX512VBMI` alone — a **compile-time-only** macro — with no accompanying runtime check,
+  so there was no way to fall back to the safe SSE/AVX2 path even though the codebase already has
+  a proper runtime CPU-feature-detection module (`cpu_features.c`) that could have been consulted.
+- Fix: added a real **execution-verified** runtime check in `cpu_features.c`
+  (`verify_avx512vbmi_executable()`) — installs a `SIGILL` handler via `sigaction`, executes one
+  real `_mm512_permutexvar_epi8` under `sigsetjmp`/`siglongjmp`, and downgrades
+  `f->avx512vbmi` to `false` if it faults (or produces a wrong result) — run once, at startup, only
+  when the raw CPUID probe already said VBMI was present. Converted both consumer call sites from
+  compile-time-only branching to compiling **both** implementations always (whenever baseline
+  AVX-512VNNI is available) and dispatching between them via this verified runtime flag: renamed
+  `bitunpack2_vnni.h`'s two variants to `tn_unpack64_to_wenc_u8_vbmi`/`_sse` behind a small runtime-
+  dispatching wrapper (cached per-TU `static int`, same pattern as `tn_simd_init()`'s one-time
+  probe); `matmul_i4_task` now hoists `bool use_vbmi_i4 = tn_cpu_features_detect()->avx512vbmi;`
+  once per task and branches on it inside the per-row loop instead of `#if/#else`.
+- Detection: `gdb -batch -ex run -ex bt -ex "disassemble $rip-100,$rip+30"` on the crashing binary,
+  after confirming reproducibility with `dmesg | grep "trap invalid opcode"` (deterministic fault
+  offset across multiple runs, ruling out a rare/racy heisenbug).
+- Correction: see fix above; verified the exact crash scenario (`--classifier int4/int8/bf16` with
+  a cleared calibration cache, forcing fresh calibration) no longer crashes — calibration now
+  completes both phases cleanly end to end.
+- Prevention rule: on x86, a CPUID-reported feature bit is a *claim*, not a *guarantee*, especially
+  inside a hypervisor/microVM — any code path gated on an advanced ISA extension (VBMI, AMX, etc.)
+  that could plausibly run inside a VM should verify real execution once at startup (SIGILL-trapped
+  self-test) rather than trusting CPUID alone, and that verified flag — not the raw compile-time
+  macro — is what every consumer must branch on. A `#if COMPILE_TIME_MACRO` with no runtime
+  fallback is only safe for ISA tiers guaranteed by the OS/ABI baseline; anything gated by dynamic
+  CPUID needs a dynamic (and, for advanced extensions, execution-verified) escape hatch.
+
 ### 2026-07-16 — Both previously-flagged items fixed on user pushback; `make test` alone never actually ran ASan/UBSan over library code, which hid 2 more real bugs
 - Summary: user directly challenged the earlier "flag, don't fix" calls on the Q2_0 batch/MoE VNNI
   path and the byte-level-BPE detokenizer ("Why did u not fix the remaining 2?"). Both are now
