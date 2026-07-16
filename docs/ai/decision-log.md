@@ -3,6 +3,32 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-16.
 
+### 2026-07-16 — Diagnosed the classifier BF16≈INT4 anomaly properly instead of accepting "noise" as the answer
+- Decision: user rejected an initial "hardware measurement noise" explanation for why
+  BF16/INT8/INT4 classifier runs measured identical tok/s, correctly pointing out that noise alone
+  doesn't explain an exact match this precise. Traced it to a real bug: Q2_0-native models
+  (Ternary-Bonsai-27B included) never actually read `--classifier` in `forward.c`'s dispatch — the
+  flag is accepted, echoed, and even fed into a fake performance-ceiling calculation, but the
+  actual LM-head matmul always uses the same zero-copy raw Q2_0 path regardless. Fixed by adding an
+  explicit runtime warning rather than implementing full per-format materialization (a genuinely
+  large ~5GB-memory-cost architectural change, already documented as a deliberate tradeoff in
+  `gguf_loader.c` — flagged explicitly, not silently deferred). Separately confirmed the
+  underlying virtualized host was *also* recycled mid-session (hardware genuinely changed between
+  the thread-sweep and classifier-sweep measurements) — both facts are true, but the no-op dispatch
+  bug is the actual reason the three classifier configs were indistinguishable, not the noise.
+- Also changed the startup banner to match llama.cpp's actual (unconditional-in-a-TTY) behavior,
+  after being asked why llama.cpp shows its banner in one-shot mode and pz didn't — read
+  llama.cpp's source to confirm it has no interactive-vs-scripted distinction at all, then verified
+  both the old and new pz behavior empirically via real pty captures rather than trusting the
+  source read alone.
+- Fixed a batch of pre-existing compiler warnings across `src/` and `tests/` on explicit reminder
+  of the bug-fix policy (see mistakes.md for the full list) — all were genuinely pre-existing and
+  unrelated to this session's main work, but "pre-existing" was correctly rejected as an excuse to
+  leave them.
+- Verification: full gcc + clang release/test/debug, plus a from-scratch ASan/UBSan run with
+  `$(LIB_OBJS)` genuinely instrumented — all green, zero warnings, zero failures.
+- Status: ACCEPTED.
+
 ### 2026-07-16 — Fixed a real SIGILL crash found while benchmarking classifier precision (bf16/int8/int4)
 - Decision: while collecting a `--classifier` throughput sweep for benchmark documentation, every
   run crashed with `SIGILL` on this host. Root-caused (via `gdb`) to AVX-512VBMI code executing

@@ -5,6 +5,115 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-16.
 
+### 2026-07-16 — `--classifier` silently no-ops on Q2_0-native models: the real reason BF16/INT8/INT4 measured identically
+- Summary: a classifier-precision benchmark showed BF16, INT8, and INT4 all measuring ~1.07-1.09
+  tok/s on Ternary-Bonsai-27B — identical within noise. My first explanation blamed hardware
+  measurement noise alone (this virtualized host's DRAM bandwidth reading did vary 9.9-12.3 GB/s
+  across the 3 runs). User pushback ("in the same hardware still does not make sense for bf16 and
+  int4 to be together") was right to reject that as sufficient — noise doesn't explain identical
+  results this precisely; it explains *some* variance, not the total absence of a signal from a
+  41%-smaller data footprint (1149→680 MB/token, computed correctly by the hardware profiler).
+- Root cause: `forward.c`'s classifier dispatch has two branches. `w->q35_is_q2_0_model` (true for
+  this model, per its GGUF loader's own comment about the ~5GB cost of materializing a separate
+  BF16/INT8/INT4 copy of a 248320×5120 vocab) takes an **unconditional** `parallel_matmul_q2_0(...)`
+  path using the raw Q2_0 output tensor — it never even reads `hp->classifier_fmt`. Only the
+  `else` branch (non-Q2_0 models) dispatches on classifier format. Meanwhile `main.c`'s classifier
+  selection code (`tn_hardware_profile_set_classifier`, before weights are even loaded) always
+  prints `"Classifier: %s (user-selected)"` and the hardware profile always computes a
+  Data/token/Ceiling implying the requested precision *will* apply — for Q2_0-native models, none
+  of that ever reaches the actual generation path. The three classifier runs weren't measuring
+  three different code paths at all; they ran the *exact same* code every time.
+- Correction: added an explicit `[warning] --classifier has no effect on this model: it is
+  Q2_0-native (zero-copy LM head), so the classifier precision you selected is not applied` printed
+  right after weights load, whenever `w.q35_is_q2_0_model && args.classifier_override >= 0`
+  (`src/cli/main.c`). Did not implement actual per-format Q2_0 classifier materialization — that's
+  the ~5GB-memory-cost architectural tradeoff already documented in `gguf_loader.c`, a genuinely
+  large change or none, not a quick contained fix; flagging it explicitly rather than either
+  silently leaving the misleading printout or unilaterally taking on a multi-GB memory-budget
+  decision.
+- Affected files: `src/cli/main.c` (the new warning).
+- Detection: user explicitly rejected an incomplete "noise floor" explanation and asked for the
+  hardware to be re-verified — that pushback is what led to actually reading forward.c's dispatch
+  instead of stopping at "the numbers are close enough to be noise."
+- Prevention rule: when three configurations of a flag measure *identically* (not just similar,
+  identical within the flag's own natural variance), check whether the flag actually reaches the
+  code path being measured before blaming environment noise — a config knob that's accepted,
+  echoed back to the user, and even fed into a performance-ceiling calculation can still be a
+  complete no-op past that point. "The tool printed confirmation it applied my setting" is not the
+  same claim as "the setting was applied."
+
+### 2026-07-16 — Underlying virtualized host was recycled mid-session, invalidating a same-host performance comparison
+- Summary: while investigating the classifier-tok/s question above, `/proc/uptime` showed this
+  Firecracker microVM had been running only ~5 minutes, despite the conversation's own benchmark
+  timeline spanning hours. The thread-sweep numbers (2.74 tok/s @ t=4) and the classifier-sweep
+  numbers (1.07-1.09 tok/s) were measured on what the engine's own hardware profiler confirms were
+  *different* machines in practice: L2 cache 2048→1024 KiB/core, L3 260→33 MiB, DRAM bandwidth
+  14.0-17.3→9.9-12.3 GB/s between the two sweeps. This is real, verifiable hardware drift, not
+  measurement error — but (see the entry above) it was NOT the primary explanation for
+  BF16≈INT4≈INT8; that was the no-op dispatch bug. Both things are true at once: the classifier
+  flag never took effect for this model, *and* the underlying host changed between sweeps.
+- Detection: `cat /proc/uptime` compared against the session's own wall-clock timeline.
+- Prevention rule: on sandboxed/cloud dev environments, a same-session "before/after" hardware
+  comparison is not automatically apples-to-apples — check `/proc/uptime` (or equivalent) when a
+  performance number looks surprising, especially after a long gap of unrelated heavy work
+  (multiple full compiler rebuilds, ASan test suites, etc.) between the two measurements being
+  compared, since that gap is exactly when environment recycling is likely to have happened.
+
+### 2026-07-16 — Startup banner now matches llama.cpp: always shown in a real TTY, not just interactively
+- Summary: project-zero's animated ASCII banner was gated on `stdout_is_tty && (server_mode ||
+  !prompt)` — shown for the interactive REPL and `--server`, suppressed for one-shot `--prompt`
+  runs (deliberately modeled on Claude Code's own CLI convention, per the removed comment). User
+  asked why llama.cpp's benchmark screenshots showed its banner even in one-shot mode. Read
+  llama.cpp's actual source (`tools/cli/cli.cpp:429`, `console::log("%s\n", LLAMA_ASCII_LOGO)`) —
+  it has no such gate at all; the banner is unconditional regardless of `-p`/`--single-turn`.
+- Correction: changed the condition to just `stdout_is_tty` (`src/cli/main.c`) — the banner now
+  shows for any real-terminal invocation, one-shot or not, matching llama.cpp's actual behavior and
+  keeping benchmark screenshots self-identifying. Piped/redirected output (not a TTY) still gets
+  plain text, so scripted/automated usage is unaffected.
+- Verification: confirmed via a real pty capture (not just reading the source) that (1) the old
+  code's interactive-mode banner display actually worked before this change, and (2) the new code
+  shows the banner with `--prompt` set too, both by directly running the binary through `script`
+  and inspecting the captured raw output.
+- Affected files: `src/cli/main.c`.
+
+### 2026-07-16 — Pre-existing compiler warnings across the codebase, fixed on explicit reminder of the bug-fix policy
+- Summary: while doing the two fixes above, `make clean` + full gcc/clang rebuilds surfaced a batch
+  of pre-existing warnings unrelated to either fix — initially noted as "pre-existing, not a
+  regression" and left alone. User explicitly invoked the project's own bug-fix policy ("even if
+  something is preexisting, you are not allowed to leave it as it is"), so all were fixed in the
+  same pass rather than deferred:
+  - `src/cli/main.c`: unused `simd_backend`/`free_ram` locals (the real RAM-aware sizing already
+    happens later via a fresh post-model-load `tn_get_free_ram()` call — this local was dead, not a
+    missing wire-up); `void *` pointer arithmetic on `mf.data` (cast to `char *` first).
+  - `src/core/weights.c`: three `if (a) x=b; if (c) x=d;` pairs on one line (misleading-indentation
+    warning) — correct logic, just reformatted onto separate lines.
+  - `src/core/unpack_avx2.c`: two dead scratch variables (`shift_amounts`, `shift32`) explicitly
+    marked "dummy" / superseded in their own comments, left over from writing the function.
+  - `src/math/matmul_q4k.c`: `hsum8_epi32` fully dead (superseded by inline hsum code elsewhere,
+    removed); `q4k_decode_scales_raw` only used by the scalar (non-AVX2) fallback, now compiled
+    only under `#if !TN_HAS_AVX2` instead of unconditionally.
+  - `tests/test_harness.h`: the three test-counter statics aren't used by every test file that
+    includes the header (e.g. audit-style files with their own pass/fail output) — marked
+    `__attribute__((unused))` since the header provides them unconditionally by design.
+  - `tests/test_simd_vnni.c`: a tautological `q[i] > 127` check on an `int8_t` (its own max value —
+    can never be true), removed.
+  - `tests/test_forward.c`: dead helper `fill_pattern_i8`, never called, removed.
+  - `tests/forensic_audit_suite.c` (10), `tests/test_vision_components.c` (5),
+    `tests/test_redbox.c` (1): K&R-style `foo()` no-prototype declarations → explicit `foo(void)`.
+  - `tests/test_vision_e2e.c`: implicit `int`→`float` narrowing of `RAND_MAX` in `rand() /
+    RAND_MAX` → explicit `(float)RAND_MAX` cast (same rounding, no behavior change, just no longer
+    silent).
+  - `src/multimodal/image_load.c`: one warning from the vendored `stb_image_resize2.h` (third-party
+    code) — suppressed via `#pragma GCC diagnostic push/ignore/pop` around its include rather than
+    patching the vendor file, to avoid merge friction on future vendor updates.
+- Verification: `make clean` + full gcc and clang release/test/debug, plus a from-scratch
+  ASan/UBSan run with `$(LIB_OBJS)` genuinely instrumented (not just test files) — all green, zero
+  warnings, zero failures, for both compilers.
+- Prevention rule: "pre-existing and unrelated to the current task" is never sufficient reason on
+  its own to leave a warning or bug in place — the project's own rule requires fixing it in the
+  same pass unless it's a genuinely large architectural change (and even then, only after flagging
+  it explicitly, not silently skipping).
+
 ### 2026-07-16 — CPUID lied about AVX-512VBMI on this virtualized host: SIGILL crash on every first-time calibration (and any `--classifier` use)
 - Summary: while running a `--classifier` sweep for benchmark documentation, every invocation
   crashed with `SIGILL` ("illegal instruction"), reproducibly, inside `tn_calibrate()`. Root-caused

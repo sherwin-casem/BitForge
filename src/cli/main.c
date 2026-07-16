@@ -95,15 +95,19 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Phase 22.5: animated startup banner — TTY-gated, and only for
-     * long-running/human-watched invocations (REPL, --server), not for
-     * one-shot --prompt runs. Matches Claude Code's own convention of
-     * showing its banner interactively but suppressing it in scripted/
-     * non-interactive ("-p") mode, so piped/automated --prompt output
-     * stays clean. */
+    /* Phase 22.5: animated startup banner — TTY-gated only. Previously also
+     * suppressed for one-shot --prompt runs (matching Claude Code's own
+     * convention), but llama-cli (the reference engine used throughout this
+     * project's head-to-head benchmarks) prints its banner unconditionally
+     * regardless of -p/single-turn mode — confirmed by reading its actual
+     * source (tools/cli/cli.cpp's console::log(LLAMA_ASCII_LOGO) call has no
+     * such gate at all). Matching that here keeps benchmark screenshots
+     * visually self-identifying (which engine produced this terminal
+     * capture) instead of only showing plain text for one-shot pz runs.
+     * Piped/redirected output (not a real TTY) still gets plain text. */
     int stdout_is_tty = isatty(fileno(stdout));
     int color_enabled_early = tn_color_resolve(args.color_mode, stdout_is_tty, getenv("NO_COLOR"));
-    if (stdout_is_tty && (args.server_mode || !args.prompt)) {
+    if (stdout_is_tty) {
         tn_banner_print(stdout_is_tty, color_enabled_early);
     }
 
@@ -117,7 +121,7 @@ int main(int argc, char **argv) {
         printf("SIMD override: %s (user-selected)\n", args.simd_override);
     }
 
-    const char *simd_backend = tn_simd_init();
+    tn_simd_init();
 
     /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format */
     const TnHardwareProfile *hw = tn_hardware_profile_init();
@@ -175,7 +179,6 @@ int main(int argc, char **argv) {
     tn_hardware_profile_report(hw);
 
     /* Thread count: CLI override > calibration > auto-detected */
-    tn_i64 free_ram = (tn_i64)hw->free_ram_bytes;
     int active_threads;
     if (args.num_threads > 0) {
         active_threads = args.num_threads;
@@ -280,6 +283,22 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
+        /* --classifier only affects the LM head dispatch in forward.c's
+         * non-Q2_0 branch (parallel_matmul_i4/i8/bf16). Q2_0-native Qwen3.5
+         * models keep token embedding + LM head as zero-copy raw Q2_0
+         * unconditionally (materializing a separate BF16/INT8/INT4 copy
+         * would cost ~5 GB for a 248320x5120 vocab — see gguf_loader.c's
+         * q35_is_q2_0_model comment) — the earlier "Classifier: X
+         * (user-selected)" printout and hardware-profile Data/token/Ceiling
+         * numbers reflect that request, not what the model actually runs.
+         * Say so explicitly instead of silently no-op'ing a flag the user
+         * asked for. */
+        if (w.q35_is_q2_0_model && args.classifier_override >= 0) {
+            fprintf(stderr,
+                "[warning] --classifier has no effect on this model: it is Q2_0-native "
+                "(zero-copy LM head), so the classifier precision you selected is not "
+                "applied — see docs/ai/decision-log.md.\n");
+        }
     } else {
         printf("Model format: native ternary\n");
 
@@ -307,7 +326,7 @@ int main(int argc, char **argv) {
             }
             size_t moe_size = mf.size - MOE_HDR_OFFSET;
             size_t moe_off  = 0;
-            if (moe_config_read(&mc, mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) != TN_OK) {
+            if (moe_config_read(&mc, (char *)mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) != TN_OK) {
                 fprintf(stderr, "Failed to read MoE config header.\n");
                 mapped_file_close(&mf);
                 threadpool_destroy(tp);

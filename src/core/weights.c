@@ -312,12 +312,14 @@ void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
                     tn_u32 bits0 = (tn_u32)row[j] << 16;
                     float f0; memcpy(&f0, &bits0, sizeof(float));
                     int q0 = (int)(f0 * inv_scale_i4 + (f0 >= 0 ? 0.5f : -0.5f));
-                    if (q0 > 7) q0 = 7; if (q0 < -7) q0 = -7;
+                    if (q0 > 7) q0 = 7;
+                    if (q0 < -7) q0 = -7;
 
                     tn_u32 bits1 = (tn_u32)row[j+1] << 16;
                     float f1; memcpy(&f1, &bits1, sizeof(float));
                     int q1 = (int)(f1 * inv_scale_i4 + (f1 >= 0 ? 0.5f : -0.5f));
-                    if (q1 > 7) q1 = 7; if (q1 < -7) q1 = -7;
+                    if (q1 > 7) q1 = 7;
+                    if (q1 < -7) q1 = -7;
 
                     dst[j/2] = (tn_u8)(((q1 + 8) << 4) | (q0 + 8));
                 }
@@ -325,7 +327,8 @@ void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
                     tn_u32 bits0 = (tn_u32)row[j] << 16;
                     float f0; memcpy(&f0, &bits0, sizeof(float));
                     int q0 = (int)(f0 * inv_scale_i4 + (f0 >= 0 ? 0.5f : -0.5f));
-                    if (q0 > 7) q0 = 7; if (q0 < -7) q0 = -7;
+                    if (q0 > 7) q0 = 7;
+                    if (q0 < -7) q0 = -7;
                     dst[j/2] = (tn_u8)(q0 + 8);
                 }
             }
