@@ -150,6 +150,7 @@ set(MATH_SOURCES
     src/math/matmul_q8_0.c
     src/math/matmul_q5k.c
     src/math/matmul_q2_0.c
+    src/math/matmul_q2_0_vnni.c
     src/math/parallel_matmul.c
     src/math/quantize_i8.c
     src/math/rmsnorm.c
@@ -318,7 +319,8 @@ if(PZ_DIST AND NOT MSVC)
     set_source_files_properties(${PZ_AVX512_SRCS} PROPERTIES
         COMPILE_OPTIONS "-mavx2;-mfma;-mf16c;-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq")
     set_source_files_properties(src/math/ternary_matmul_packed_vnni.c
-        src/math/ternary_matmul_packed_vnni256.c PROPERTIES
+        src/math/ternary_matmul_packed_vnni256.c
+        src/math/matmul_q2_0_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vl")
     set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavxvnni")

@@ -9,9 +9,16 @@
  * dwarfed by the 64-wide FMA reduction that follows), then accumulated with
  * SIMD FMA against the matching slice of x. This keeps the hot loop's
  * correctness easy to verify while still vectorizing the memory-bandwidth-
- * bound accumulation — see docs/ai/engineering-rules.md "Performance"
- * (measure before/after; a hand-rolled bit-shuffle decode is a follow-up
- * perf item, not required for correctness).
+ * bound accumulation.
+ *
+ * This is now the PORTABLE FALLBACK path: on an AVX-512 VNNI host,
+ * parallel_matmul_q2_0() dispatches to matmul_q2_0_vnni.c's int8 VNNI
+ * kernel instead (same "w_enc bias trick" as ternary_matmul_packed_vnni.c —
+ * this decode-then-FMA path is ~1% of this host's own measured bandwidth
+ * ceiling, confirmed on the real Ternary-Bonsai-27B model; see
+ * docs/ai/mistakes.md). This scalar/AVX2 path still runs for non-VNNI
+ * hosts and any input shape the VNNI kernel declines (n not a multiple of
+ * 128, or larger than its stack-buffer ceiling).
  */
 
 #include "math/matmul_q2_0.h"
@@ -114,8 +121,21 @@ static void matmul_q2_0_task(void *arg, int thread_id, int start, int end) {
         a->out[i] = dot_q2_0_row(a->w + (size_t)i * a->row_bytes, a->x, a->n);
 }
 
+#if TN_HAS_AVX512VNNI
+/* matmul_q2_0_vnni.c — same translation-unit-local extern pattern
+ * ternary_matmul_packed_vnni.c's own AVX-512 fallback uses. Returns 1 if it
+ * handled the call, 0 if the caller should use the portable path below
+ * (n not a multiple of 128, or larger than its stack-buffer ceiling —
+ * never happens for this model's actual dims). */
+extern int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0,
+                                      int n, int d, ThreadPool *tp);
+#endif
+
 void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
                            int n, int d, ThreadPool *tp) {
+#if TN_HAS_AVX512VNNI
+    if (parallel_matmul_q2_0_vnni(out, x, w_q2_0, n, d, tp)) return;
+#endif
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
     MatmulQ2_0Args args = { .out = out, .x = x, .w = w_q2_0,
                              .n = n, .d = d, .row_bytes = row_bytes };
@@ -123,7 +143,14 @@ void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
     threadpool_dispatch(tp, matmul_q2_0_task, &args, d);
 }
 
-/* ── Batched: k weight matrices, per-expert inputs ───────────────────────── */
+/* ── Batched: k weight matrices, per-expert inputs ───────────────────────── *
+ * Still the portable decode+FMA path unconditionally — this is the MoE
+ * per-expert entry point and Ternary-Bonsai-27B is dense (MoE disabled), so
+ * it was never on this session's measured hot path. Left as a known,
+ * explicitly-flagged follow-up rather than silently matching the single-
+ * matrix path's VNNI acceleration: same "w_enc bias trick" would apply
+ * (each expert's row is independent), it just wasn't verified against a
+ * real MoE-Q2_0 model in this session. */
 
 typedef struct {
     float        **outs;

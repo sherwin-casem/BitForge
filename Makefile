@@ -148,6 +148,10 @@ build/math/ternary_matmul_packed_vnni.o: src/math/ternary_matmul_packed_vnni.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni) -c -o $@ $<
 
+build/math/matmul_q2_0_vnni.o: src/math/matmul_q2_0_vnni.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni) -c -o $@ $<
+
 # VNNI-256: EVEX-encoded 256-bit VNNI via AVX-512VNNI — no ZMM, no frequency throttle.
 # The 256-bit _mm256_dpbusds_epi32 intrinsic needs avx512vl in addition to
 # avx512vnni (clang enforces this strictly; release gets it via -march=native,

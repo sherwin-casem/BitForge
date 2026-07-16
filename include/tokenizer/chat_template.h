@@ -25,20 +25,24 @@
  *   arr[start:stop:step]       — Python slice (array only)
  *   expr is [not] defined/string/none/iterable/mapping/integer/odd/even
  *   str.split/strip/rstrip/lstrip/startswith/endswith(...) — string methods
+ *     (receiver must be a variable/expression, e.g. `content.split(...)`;
+ *     a method called directly on a literal, `'x'.upper()`, parses but
+ *     isn't specially dispatched — see eval()'s NT::Call case)
  *   namespace(k=v, ...)        — object literal, seeded from keyword args
  *   range/dict/list(...)       — builtins
+ *   {% for k, v in dict|items %} — dict iteration, tuple-unpacking for-loop
  *   expr | filter              — filters: trim, upper, lower, length, default,
  *                                 replace, join, int, string, tojson/safe/e,
- *                                 indent
+ *                                 indent, items
  *   raise_exception(...)       — no-op (ignored)
  *   {%- / -%}  {{- / -}}       — whitespace control
  *
- * NOT supported: {% block/call/filter/raw %} (definitions are parsed and
- * skipped — see skip_matching_block() — so they render as nothing rather
- * than erroring); method/postfix chaining directly off a string/int
- * literal (`'x'.upper()` — works fine off a variable, `x.upper()`);
- * `|items` dict-iteration filter; tuple-unpacking for-loops always bind
- * only the first variable.
+ * NOT supported: {% block/call/filter/raw %} — definitions are parsed and
+ * skipped (see skip_matching_block()), rendering as nothing rather than
+ * erroring. Deliberately left unimplemented: no real chat template
+ * encountered so far uses these (they're Jinja's template-inheritance/
+ * macro-body-wrapping features, without an analogous need in a
+ * render-one-flat-prompt context) — revisit if a real template needs one.
  */
 
 #ifdef __cplusplus

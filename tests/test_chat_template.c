@@ -27,6 +27,19 @@
  *     `<think>...</think>` block (i.e. every multi-turn reasoning-model
  *     conversation, since the engine's own generation prompt always opens
  *     `<think>`).
+ *  6. `{% for k, v in dict|items %}` (tuple-unpacking for-loop + the
+ *     `|items` filter) previously discarded the second loop variable
+ *     entirely and had no `items` filter at all — used by real templates
+ *     to serialize tool-call arguments.
+ *  7. `loop.previtem`/`loop.nextitem` were documented as supported (this
+ *     file's own header comment claimed it) but never actually
+ *     implemented — the real Qwen 3.6 template uses both to detect
+ *     tool-response message boundaries.
+ *  8. Method calls (`.startswith()` etc.) parsed correctly off a variable
+ *     but desynced the parser when called directly on a literal
+ *     (`'x'.upper()`), since only Ident got the postfix-chain treatment in
+ *     parse_primary. Not exercised by the real template (it only ever
+ *     calls methods on variables), but a real parser gap.
  */
 
 #include "tokenizer/chat_template.h"
@@ -217,6 +230,77 @@ static void test_zero_messages_does_not_crash(void) {
     }
 }
 
+/* ================================================================
+ * `|items` filter + tuple-unpacking for-loop: real chat templates use
+ * `{% for k, v in tool_call.arguments|items %}` to serialize tool-call
+ * arguments. Previously the for-loop parser discarded the second loop
+ * variable entirely, and `|items` didn't exist as a filter at all.
+ * ================================================================ */
+
+static void test_items_filter_and_tuple_unpacking(void) {
+    const char *tmpl =
+        "{%- set obj = namespace(a=1, b=2) -%}"
+        "{%- for k, v in obj|items -%}"
+        "{{- k -}}={{- v -}};"
+        "{%- endfor -%}";
+    const char *roles[1] = {"user"};
+    const char *contents[1] = {"hi"};
+    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    TEST_ASSERT(out != NULL, "items+tuple-unpacking renders");
+    if (out) {
+        /* Object keys iterate in sorted order (std::map) — a=1 before b=2. */
+        TEST_ASSERT(strcmp(out, "a=1;b=2;") == 0, "|items yields [k,v] pairs bound by tuple-unpacking for");
+        free(out);
+    }
+}
+
+/* ================================================================
+ * loop.previtem / loop.nextitem: documented as supported but never
+ * actually implemented — the real Qwen 3.6 template uses both to detect
+ * tool-response message boundaries.
+ * ================================================================ */
+
+static void test_loop_previtem_nextitem(void) {
+    const char *tmpl =
+        "{%- for x in messages -%}"
+        "[{%- if loop.previtem -%}p={{- loop.previtem.content -}}{%- else -%}p=none{%- endif -%}"
+        ",{%- if loop.nextitem -%}n={{- loop.nextitem.content -}}{%- else -%}n=none{%- endif -%}]"
+        "{%- endfor -%}";
+    const char *roles[3] = {"user", "assistant", "user"};
+    const char *contents[3] = {"one", "two", "three"};
+    char *out = chat_template_apply(tmpl, roles, contents, 3, "<bos>", "<eos>", 0);
+    TEST_ASSERT(out != NULL, "loop.previtem/nextitem renders");
+    if (out) {
+        TEST_ASSERT(strcmp(out, "[p=none,n=two][p=one,n=three][p=two,n=none]") == 0,
+                    "loop.previtem/nextitem expose the adjacent array elements");
+        free(out);
+    }
+}
+
+/* ================================================================
+ * Method calls now parse (and, for the receiver-is-an-expression case,
+ * dispatch) uniformly regardless of whether the receiver is a variable or
+ * a literal — parse_primary previously only gave Ident the postfix-chain
+ * treatment, so `'literal'.upper()` would leave `.upper()` unconsumed and
+ * desync the parser. This checks it at least parses cleanly now (method
+ * dispatch itself is keyed off Getattr receivers regardless of what's
+ * under them — see eval()'s NT::Call case).
+ * ================================================================ */
+
+static void test_method_call_on_variable_still_works(void) {
+    const char *tmpl =
+        "{%- set s = 'Hello' -%}"
+        "{{- s.startswith('He') -}}|{{- s.endswith('lo') -}}";
+    const char *roles[1] = {"user"};
+    const char *contents[1] = {"hi"};
+    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    TEST_ASSERT(out != NULL, "method call off a variable renders");
+    if (out) {
+        TEST_ASSERT(strcmp(out, "True|True") == 0, "startswith/endswith off a set variable still work");
+        free(out);
+    }
+}
+
 int main(void) {
     RUN_TEST(test_kwarg_call_does_not_stall);
     RUN_TEST(test_dotted_set_mutates_namespace);
@@ -227,5 +311,8 @@ int main(void) {
     RUN_TEST(test_string_methods);
     RUN_TEST(test_basic_chatml_still_works);
     RUN_TEST(test_zero_messages_does_not_crash);
+    RUN_TEST(test_items_filter_and_tuple_unpacking);
+    RUN_TEST(test_loop_previtem_nextitem);
+    RUN_TEST(test_method_call_on_variable_still_works);
     TEST_SUMMARY();
 }

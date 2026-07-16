@@ -3,6 +3,38 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-16.
 
+### 2026-07-16 — Closed the Q2_0 perf gap and the remaining chat-template gaps on explicit request
+- Decision: given a direct follow-up request to "fix all shortcomings" from the earlier Qwen 3.6
+  benchmark (this same day), implemented the deferred Q2_0 VNNI kernel and the contained
+  chat-template gaps (`|items` filter, tuple-unpacking for-loops, `loop.previtem`/`nextitem`,
+  method calls on literals) rather than leaving them as documented-but-unaddressed. Left two
+  items deliberately out of scope, each re-flagged explicitly rather than silently fixed or
+  silently dropped:
+  1. The Q2_0 *batch* matmul path (`parallel_matmul_q2_0_batch`, used for MoE per-expert
+     routing) still uses the portable decode+FMA kernel. Ternary-Bonsai-27B is dense (MoE
+     disabled), so this was never on the measured hot path this session, and extending the same
+     VNNI trick to it wasn't verified against a real MoE+Q2_0 model.
+  2. The byte-level-BPE detokenizer's incomplete GPT-2 byte-unicode reverse table (mojibake on
+     non-ASCII output) — a real, pre-existing, unrelated-to-Qwen-3.6 bug found via a screenshot
+     review, but a stateful rewrite of a function on every model's hot decode path, with zero
+     existing non-ASCII test coverage to verify against; see mistakes.md for the full reasoning.
+- Benchmark results (before -> after the VNNI kernel), same prompt, same host, 4 threads,
+  greedy decoding: project-zero generation throughput went from ~0.11 tok/s to **~3.24 tok/s**
+  (~29x) on the real model. Verified as a genuine speedup and not a correctness regression by
+  comparing the exact sampled-token-ID sequence at matching generation steps before and after —
+  identical for every step checked (both engines' greedy argmax agreed token-for-token), and a
+  full 256-token completion was re-captured end-to-end producing the same coherent
+  reasoning-then-answer response as before the optimization.
+- Correctness verification method for the new VNNI kernel specifically: a dedicated unit test
+  (`tests/test_q2_0_matmul.c`) comparing it against an independent reference decode path
+  (`gguf_dequant_q2_0`, unrelated to either matmul kernel) across single-block/multi-block/
+  real-model-dimension/non-block-aligned/all-zero-activation cases, run under full ASan+UBSan
+  instrumentation of every object involved (not just the test file — see mistakes.md's note on
+  why the first version of this test had false failures and how that was root-caused with a
+  one-hot activation probe before concluding the kernel itself was correct).
+- Status: ACCEPTED. gcc+clang release/test/debug all green (including the 2 new test binaries);
+  real-model output re-verified coherent and consistent with the pre-optimization baseline.
+
 ### 2026-07-16 — Qwen 3.5/3.6 hybrid-attention support: architecture, benchmark engine, and scope
 - Decision: implement full Qwen 3.5/3.6 (Gated DeltaNet + Gated-Attention hybrid) support,
   targeting `prism-ml/Ternary-Bonsai-27B-gguf` specifically, following the existing `has_mla`

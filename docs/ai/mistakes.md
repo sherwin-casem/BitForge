@@ -18,6 +18,123 @@
 
 ---
 
+### 2026-07-16 — Q2_0 matmul was 1% of this host's own bandwidth ceiling; VNNI kernel closes it (~29x)
+- Summary: project-zero measured ~0.11-0.12 tok/s on the real Ternary-Bonsai-27B model, against
+  the engine's own hardware profiler's computed ceiling of ~17 tok/s (100% DRAM bandwidth) for
+  this host/model — i.e. running at roughly 1% of what this host can actually do. The reference
+  engine (PrismML-Eng's llama.cpp fork) was *also* far from that ceiling (~0.9-1.2 tok/s), which
+  in hindsight was the tell: this is a genuinely fresh (2-day-old at the time) quantization
+  format, so neither engine had a tuned kernel for it yet — not a hardware limit.
+- Root cause: `matmul_q2_0.c`'s only kernel decoded each 128-element Q2_0 block into a stack
+  float buffer, then ran an AVX2 FMA reduction — correct, but this project already has a proven,
+  much faster pattern for exactly this situation (`ternary_matmul_packed_vnni.c`'s AVX-512 VNNI
+  "w_enc bias trick": `dpbusds(w_enc_u8, q_x_i8) = dot(w,q_x) + sum(q_x)`, so
+  `true_dot = result - sum_qx`) that was never applied to Q2_0, despite GGUF Q2_0's
+  code-to-value mapping (0/1/2/(3) -> -1/0/+1/(+2), i.e. `w_enc = w+1`) being bit-for-bit
+  identical to this project's own native packed-ternary format that pattern was written for.
+- Affected files/modules: new `src/math/matmul_q2_0_vnni.c` (the fast path, guarded
+  `#if TN_HAS_AVX512VNNI`), new `include/math/bitunpack2_vnni.h` (the 2-bit unpack primitive,
+  extracted out of `ternary_matmul_packed_vnni.c` so both kernels share one implementation
+  instead of two copies of the same bit-trick), `src/math/matmul_q2_0.c` (now the portable
+  fallback: non-VNNI hosts, or any input shape the VNNI kernel declines), new
+  `tests/test_q2_0_matmul.c` (17 cases; a first attempt at this test used *raw* float x as the
+  reference, which produced false failures — see below), `Makefile`/`CMakeLists.txt` (new file's
+  build rules, mirroring the sibling VNNI kernel's exactly).
+- A meta-mistake caught while writing the test: the first test compared the VNNI kernel's output
+  against a reference computed with the *raw, unquantized* float activations. VNNI hardware
+  fundamentally requires int8 operands, so the kernel necessarily quantizes activations first —
+  comparing against the un-quantized reference conflates that expected, by-design quantization
+  error with a real kernel bug, and produced 3 "failures" that were actually just wide
+  (non-realistic-magnitude) synthetic test inputs making the expected error visible. A one-hot
+  activation probe (`x[j]=1, everything else 0`, sweeping every `j`) proved the bit-unpack/decode
+  itself was bit-exact correct — the fix was rewriting the reference to quantize x the same way
+  the kernel does (`quantize_row_to_i8`) and compare against *that*, isolating "is the VNNI math
+  right" from "int8 quantization is lossy by design."
+- Detection: `docs/ai/mistakes.md`'s own prior entry (this session's earlier Qwen 3.6 work)
+  already flagged this as a known, deliberately-deferred performance limitation; fixed now on
+  explicit user request, verified end-to-end on the real model (see decision-log.md for the
+  before/after numbers and the exact-sampled-token-sequence correctness check).
+- Correction: see Affected files above.
+- Prevention rule: when a new SIMD kernel's correctness test uses int8/quantized intermediate
+  representations, the reference must replicate that same quantization step — comparing against
+  full float precision measures quantization error, not kernel correctness, and produces
+  misleading test failures on wide-range synthetic inputs while passing on narrow ones (which is
+  exactly backwards from what a test should do). A one-hot/basis-vector probe is a fast, precise
+  way to distinguish "the decode is wrong" from "the accumulated numeric approximation is
+  (expectedly) different" when a full-vector test fails ambiguously.
+
+### 2026-07-16 — FLAGGED, NOT FIXED: byte-level BPE detokenizer only reverses 2 of ~256 GPT-2 byte remappings
+- Summary: found incidentally while reviewing a real-model output screenshot — a single ✅ emoji
+  in the model's own "thinking" trace rendered as mojibake (`âľħ`) instead of the correct
+  character. `src/tokenizer/tokenizer_decode.c`'s `clean_bpe_string()` only reverses two of
+  GPT-2's byte-level-BPE unicode remappings (`Ġ`->space, `Ċ`->newline). The real GPT-2 tokenizer
+  scheme remaps *all* 256 possible raw bytes to printable-range unicode codepoints (a fixed,
+  well-known permutation: printable ASCII/Latin-1 map to themselves, the ~68 unprintable byte
+  values map to codepoints U+0100 upward) — any raw byte in that ~68-value hidden range,
+  including every byte of a multi-byte UTF-8 character (emoji, CJK text, box-drawing, etc.) that
+  happens to land in it, decodes wrong today.
+- Root cause: `clean_bpe_string()` was written to handle the two remappings a plain-ASCII/Latin-1
+  chat transcript actually exercises, not the full byte-decoder table — reasonable when only
+  ASCII text had been verified, incomplete now that a real run produced non-ASCII output.
+- Why flagged instead of fixed in this pass: this is a **pre-existing bug, unrelated to the
+  Qwen 3.6 work** (the same `tokenizer_decode()` path is shared by every model this engine
+  supports, so it already affects any model emitting emoji/CJK/other non-Latin-1 text — this
+  session's testing just happened to be the first to produce a non-ASCII character and notice).
+  Fixing it properly needs: (1) the full 256-entry GPT-2 byte<->unicode reverse table, and more
+  importantly (2) a stateful multi-byte-UTF-8 accumulator across `tokenizer_decode()` calls,
+  since a single multi-byte character's raw bytes can be split across multiple separate BPE
+  tokens (multiple calls) — a genuinely stateful change to a `__thread`-buffer-based function
+  that's on the hot path for *every token of every model*, not a contained, low-risk fix like the
+  ones above. Per engineering-rules.md's bug-fix policy ("only defer for a genuinely large
+  architectural change, and flag that to the user explicitly instead of silently skipping it") —
+  this qualifies: rushing a stateful rewrite of a shared, heavily-exercised core path without
+  dedicated test coverage risks a real regression across every existing model/test, which is a
+  worse outcome than a narrow, understood, flagged cosmetic gap.
+- Affected files/modules: `src/tokenizer/tokenizer_decode.c` (not yet modified).
+- Detection: visual review of a real-model output screenshot (`project-zero-full.png`) — not
+  caught by any existing test, since none exercise non-ASCII/emoji output.
+- Correction: NOT APPLIED. Flagged to the user explicitly; tracked here as an open item.
+- Prevention rule: a byte-level-BPE detokenizer needs the *complete* reverse byte table, not just
+  the couple of remappings a given test corpus happens to touch — ASCII-only test coverage will
+  never catch this class of gap. If/when this gets fixed, verify against real multi-byte UTF-8
+  output (emoji, CJK) specifically, and add it as a permanent test case (something this engine's
+  test suite currently has zero coverage for).
+
+### 2026-07-16 — `loop.previtem`/`loop.nextitem` documented as supported, never implemented; 2 more real gaps
+- Summary: this session's own earlier chat_template.h update (same day, during the Qwen 3.6 work)
+  claimed `loop.previtem`/`loop.nextitem` were supported — they were never actually set anywhere
+  in the `NT::For` exec() case. The real Qwen 3.6 template uses both
+  (`loop.previtem.role != "tool"` / `loop.nextitem.role != "tool"`) to detect tool-response
+  message boundaries in multi-turn tool-calling conversations. Found via explicit re-audit
+  ("fix all shortcomings") rather than a failing test — nothing had exercised the tool-role path
+  yet, so the gap between the doc comment and the code was silent.
+- Root cause: documentation written aspirationally (matching real Jinja's `loop` object surface)
+  without cross-checking every field was actually implemented.
+- Also fixed in the same pass, found while auditing this file's other "not supported" list against
+  what the real template's tool-calling section actually needs:
+  1. Tuple-unpacking for-loops (`{% for k, v in dict|items %}`) previously discarded the second
+     loop variable entirely (`parse_for` only ever captured one name) — no way to bind both.
+  2. No `|items` filter existed at all (needed to turn a dict/namespace Object into `[k,v]` pairs
+     for the above to iterate over).
+  3. Method calls parsed correctly off a variable (`content.split(...)`) but desynced the parser
+     when called directly on a literal (`'x'.upper()`) — `parse_primary`'s postfix-chain loop
+     (`[key]`/`.attr`/`(args)`) only applied after the `Ident` case, not after string/int/bool/
+     none literals. Not exercised by the real template (it only calls methods on variables), but
+     a real, fixable gap — parse_primary now builds any primary first, then applies the postfix
+     loop uniformly regardless of what kind of primary it was.
+- Affected files/modules: `src/tokenizer/chat_template.cpp` (`parse_for`, `parse_primary`,
+  `NT::For`'s exec() case, `items` filter in `NT::Filter`'s exec() case),
+  `include/tokenizer/chat_template.h` (corrected the doc comment to match reality),
+  `tests/test_chat_template.c` (3 new cases: items+tuple-unpacking, previtem/nextitem, method
+  call off a variable still works post-refactor).
+- Detection: explicit re-audit against the real template's tool-calling section, prompted by the
+  user asking whether any shortcomings were still undocumented/pending.
+- Correction: see Affected files above.
+- Prevention rule: when a doc comment claims a feature is supported, that claim needs the same
+  verification bar as the code itself — either a test proves it, or don't claim it. An
+  undocumented gap is at least honest; a *mis*documented one is worse, because it looks resolved
+  and won't get re-audited until something downstream silently breaks.
+
 ### 2026-07-16 — Qwen 3.6 (Ternary-Bonsai-27B) integration: 6 real bugs, found via a real model + a real reference engine
 - Context: implementing Qwen 3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention support end-to-end
   (new files: `src/transformer/qwen35_attention.c`, `src/core/qwen35_run_state.c`,

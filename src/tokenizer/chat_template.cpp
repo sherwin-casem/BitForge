@@ -452,83 +452,97 @@ static NodePtr parse_primary(Parser& p) {
         return e;
     }
 
+    NodePtr n;
+
     /* Literals */
-    if (p.is(TK::Str))  { auto n=std::make_unique<Node>(NT::LitStr); n->sval=p.next().sval; return n; }
-    if (p.is(TK::Int))  { auto n=std::make_unique<Node>(NT::LitInt); n->ival=p.next().ival; return n; }
-    if (p.is(TK::Ident)) {
-        const std::string& sv = p.peek().sval;
-        if (sv=="true"||sv=="True")  { p.next(); auto n=std::make_unique<Node>(NT::LitBool); n->bval=true;  return n; }
-        if (sv=="false"||sv=="False"){ p.next(); auto n=std::make_unique<Node>(NT::LitBool); n->bval=false; return n; }
-        if (sv=="none"||sv=="None")  { p.next(); return std::make_unique<Node>(NT::LitNone); }
-
-        auto n = std::make_unique<Node>(NT::Ident);
+    if (p.is(TK::Str)) {
+        n = std::make_unique<Node>(NT::LitStr);
         n->sval = p.next().sval;
-
-        /* Postfixes: [key], .attr, (args) */
-        for (;;) {
-            if (p.is(TK::Lbracket)) {
-                p.next();
-                /* Python slice syntax `[start:stop:step]` (each part
-                 * optional), e.g. Qwen 3.6's chat_template.jinja uses
-                 * `messages[::-1]` to scan history in reverse. Only enters
-                 * the slice path once a ':' is actually seen, so plain
-                 * `[key]` indexing (the common case) is unaffected. */
-                NodePtr start, stop, step;
-                bool is_slice = false;
-                if (p.is(TK::Colon)) {
-                    is_slice = true;
-                } else {
-                    start = parse_expr(p);
-                    if (p.is(TK::Colon)) is_slice = true;
-                }
-                if (is_slice) {
-                    p.next(); /* consume first ':' */
-                    if (!p.is(TK::Colon) && !p.is(TK::Rbracket)) stop = parse_expr(p);
-                    if (p.is(TK::Colon)) {
-                        p.next();
-                        if (!p.is(TK::Rbracket)) step = parse_expr(p);
-                    }
-                    if (p.is(TK::Rbracket)) p.next();
-                    auto gs = std::make_unique<Node>(NT::Getslice);
-                    gs->ch.push_back(std::move(n));
-                    gs->ch.push_back(std::move(start));
-                    gs->ch.push_back(std::move(stop));
-                    gs->ch.push_back(std::move(step));
-                    n = std::move(gs);
-                } else {
-                    if (p.is(TK::Rbracket)) p.next();
-                    auto gi = std::make_unique<Node>(NT::Getitem);
-                    gi->ch.push_back(std::move(n));
-                    gi->ch.push_back(std::move(start));
-                    n = std::move(gi);
-                }
-            } else if (p.is(TK::Dot)) {
-                p.next();
-                std::string attr = p.is(TK::Ident) ? p.next().sval
-                                 : p.is(TK::Int)   ? std::to_string(p.next().ival)
-                                 : "";
-                auto ga = std::make_unique<Node>(NT::Getattr);
-                ga->sval = attr;
-                ga->ch.push_back(std::move(n));
-                n = std::move(ga);
-            } else if (p.is(TK::Lparen)) {
-                p.next();
-                auto call = std::make_unique<Node>(NT::Call);
-                call->ch.push_back(std::move(n));
-                while (!p.is(TK::Rparen) && !p.is(TK::Eof)) {
-                    size_t before = p.pos;
-                    call->ch.push_back(parse_call_arg(p));
-                    if (p.is(TK::Comma)) p.next();
-                    if (p.pos == before) throw std::runtime_error("chat_template: call-arg parse stalled (no forward progress)");
-                }
-                if (p.is(TK::Rparen)) p.next();
-                n = std::move(call);
-            } else { break; }
+    } else if (p.is(TK::Int)) {
+        n = std::make_unique<Node>(NT::LitInt);
+        n->ival = p.next().ival;
+    } else if (p.is(TK::Ident)) {
+        const std::string& sv = p.peek().sval;
+        if (sv=="true"||sv=="True")  { p.next(); n=std::make_unique<Node>(NT::LitBool); n->bval=true; }
+        else if (sv=="false"||sv=="False"){ p.next(); n=std::make_unique<Node>(NT::LitBool); n->bval=false; }
+        else if (sv=="none"||sv=="None")  { p.next(); n=std::make_unique<Node>(NT::LitNone); }
+        else {
+            n = std::make_unique<Node>(NT::Ident);
+            n->sval = p.next().sval;
         }
-        return n;
+    } else {
+        /* Fallback */
+        return std::make_unique<Node>(NT::LitNone);
     }
-    /* Fallback */
-    return std::make_unique<Node>(NT::LitNone);
+
+    /* Postfixes: [key], .attr, (args) — applied uniformly to any primary
+     * (identifier or string/int/bool/none literal), not just identifiers,
+     * so e.g. `'abcdef'.startswith('abc')` or `content.split(...)` parse
+     * the same way. (eval()'s NT::Call only special-cases method calls
+     * whose receiver is a Getattr — see that case for which string methods
+     * are actually implemented; other literal-postfix combinations just
+     * evaluate through the existing Getitem/Getattr/Call machinery.) */
+    for (;;) {
+        if (p.is(TK::Lbracket)) {
+            p.next();
+            /* Python slice syntax `[start:stop:step]` (each part
+             * optional), e.g. Qwen 3.6's chat_template.jinja uses
+             * `messages[::-1]` to scan history in reverse. Only enters
+             * the slice path once a ':' is actually seen, so plain
+             * `[key]` indexing (the common case) is unaffected. */
+            NodePtr start, stop, step;
+            bool is_slice = false;
+            if (p.is(TK::Colon)) {
+                is_slice = true;
+            } else {
+                start = parse_expr(p);
+                if (p.is(TK::Colon)) is_slice = true;
+            }
+            if (is_slice) {
+                p.next(); /* consume first ':' */
+                if (!p.is(TK::Colon) && !p.is(TK::Rbracket)) stop = parse_expr(p);
+                if (p.is(TK::Colon)) {
+                    p.next();
+                    if (!p.is(TK::Rbracket)) step = parse_expr(p);
+                }
+                if (p.is(TK::Rbracket)) p.next();
+                auto gs = std::make_unique<Node>(NT::Getslice);
+                gs->ch.push_back(std::move(n));
+                gs->ch.push_back(std::move(start));
+                gs->ch.push_back(std::move(stop));
+                gs->ch.push_back(std::move(step));
+                n = std::move(gs);
+            } else {
+                if (p.is(TK::Rbracket)) p.next();
+                auto gi = std::make_unique<Node>(NT::Getitem);
+                gi->ch.push_back(std::move(n));
+                gi->ch.push_back(std::move(start));
+                n = std::move(gi);
+            }
+        } else if (p.is(TK::Dot)) {
+            p.next();
+            std::string attr = p.is(TK::Ident) ? p.next().sval
+                             : p.is(TK::Int)   ? std::to_string(p.next().ival)
+                             : "";
+            auto ga = std::make_unique<Node>(NT::Getattr);
+            ga->sval = attr;
+            ga->ch.push_back(std::move(n));
+            n = std::move(ga);
+        } else if (p.is(TK::Lparen)) {
+            p.next();
+            auto call = std::make_unique<Node>(NT::Call);
+            call->ch.push_back(std::move(n));
+            while (!p.is(TK::Rparen) && !p.is(TK::Eof)) {
+                size_t before = p.pos;
+                call->ch.push_back(parse_call_arg(p));
+                if (p.is(TK::Comma)) p.next();
+                if (p.pos == before) throw std::runtime_error("chat_template: call-arg parse stalled (no forward progress)");
+            }
+            if (p.is(TK::Rparen)) p.next();
+            n = std::move(call);
+        } else { break; }
+    }
+    return n;
 }
 
 /* ---- Filter: primary | fname(args) ---- */
@@ -701,8 +715,15 @@ static NodePtr parse_expr(Parser& p) {
 static NodePtr parse_for(Parser& p) {
     p.next(); /* consume "for" */
     std::string var = p.is(TK::Ident) ? p.next().sval : "";
-    /* tuple: for k, v in ... — discard second var */
-    if (p.is(TK::Comma)) { p.next(); if (p.is(TK::Ident)) p.next(); }
+    /* Tuple unpacking: `for k, v in dict|items` (real chat templates use
+     * exactly this for tool-call argument serialization). Both names are
+     * encoded into sval as "k,v" — Ident tokens never contain a literal
+     * ',', so it's an unambiguous separator at exec() time (same trick
+     * parse_set uses for dotted targets). */
+    if (p.is(TK::Comma)) {
+        p.next();
+        if (p.is(TK::Ident)) { var += ","; var += p.next().sval; }
+    }
     if (p.kw("in")) p.next();
     auto iter = parse_expr(p);
     p.skip_to_stmt_close();
@@ -1113,6 +1134,25 @@ static Value eval(const Node* n, Scope& sc) {
             if (fn=="int")   return Value(v.to_int());
             if (fn=="string") return Value(v.to_str());
             if (fn=="tojson"||fn=="safe"||fn=="e"||fn=="escape") return v;
+            if (fn=="items") {
+                /* dict.items() -> array of [key, value] pairs, consumed by
+                 * `{% for k, v in x|items %}` (tuple-unpacking for, see
+                 * NT::For's exec() case) — real chat templates use exactly
+                 * this for tool-call argument serialization. Object keys
+                 * iterate in std::map's sorted order (this engine's Value
+                 * has no ordered-map type anywhere), matching this file's
+                 * existing general object-iteration behavior elsewhere. */
+                Value out_arr; out_arr.type = VType::Array;
+                if (v.type == VType::Object) {
+                    for (auto& kv : v.obj) {
+                        Value pair; pair.type = VType::Array;
+                        pair.arr.push_back(Value(kv.first));
+                        pair.arr.push_back(kv.second);
+                        out_arr.arr.push_back(std::move(pair));
+                    }
+                }
+                return out_arr;
+            }
             if (fn=="indent") {
                 /* indent(width, first=false) */
                 int width = (int)arg(0).to_int(); if (width<=0) width=4;
@@ -1275,9 +1315,25 @@ static void exec(const Node* n, Scope& sc, std::string& out) {
             Value iter = eval(n->ch[0].get(), sc);
             if (iter.type == VType::Array) {
                 size_t sz = iter.arr.size();
+                /* Tuple-unpacking target ("k,v" from parse_for, see its
+                 * comment) vs. a single loop variable. */
+                size_t comma = n->sval.find(',');
+                std::string var1 = (comma == std::string::npos) ? n->sval : n->sval.substr(0, comma);
+                std::string var2 = (comma == std::string::npos) ? "" : n->sval.substr(comma + 1);
+
                 for (size_t i = 0; i < sz; i++) {
                     Scope child(&sc);
-                    child.set(n->sval, iter.arr[i]);
+                    if (var2.empty()) {
+                        child.set(var1, iter.arr[i]);
+                    } else if (iter.arr[i].type == VType::Array && iter.arr[i].arr.size() >= 2) {
+                        child.set(var1, iter.arr[i].arr[0]);
+                        child.set(var2, iter.arr[i].arr[1]);
+                    } else {
+                        /* Not actually a pair (e.g. plain array iterated
+                         * with a tuple target) — bind the whole item to
+                         * var1, leave var2 undefined, rather than crash. */
+                        child.set(var1, iter.arr[i]);
+                    }
                     /* Loop variable object */
                     Value lv; lv.type = VType::Object;
                     lv.obj["index"]     = Value((long long)(i+1));
@@ -1287,6 +1343,8 @@ static void exec(const Node* n, Scope& sc, std::string& out) {
                     lv.obj["length"]    = Value((long long)sz);
                     lv.obj["revindex"]  = Value((long long)(sz-i));
                     lv.obj["revindex0"] = Value((long long)(sz-i-1));
+                    if (i > 0)      lv.obj["previtem"] = iter.arr[i-1];
+                    if (i+1 < sz)   lv.obj["nextitem"] = iter.arr[i+1];
                     child.set("loop", std::move(lv));
                     exec(n->ch[1].get(), child, out);
                 }
