@@ -283,6 +283,47 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
+
+        /* Correct the profiler's per-token traffic + ceiling with the real
+         * loaded model (2026-07-17): tn_hardware_profile_init() runs before
+         * the model file is opened and seeds Data/token with compile-time
+         * BitNet-2B constants (~1149 MB), overstating the ceiling ~6x for
+         * multi-GB GGUF models (docs/ai/mistakes.md). Dense decode streams
+         * every weight tensor per token except the embedding (one row read).
+         * For Q2_0-native models the raw Q2_0 LM head is swapped for the
+         * materialized classifier's bytes when one was explicitly requested.
+         * MoE models overcount here (all experts, not just routed ones) —
+         * TODO: subtract inactive-expert bytes using MoEConfig. */
+        {
+            double per_tok = (double)mf.size;
+            double cls_bytes = 0.0;
+            const TnHardwareProfile *hp_m = tn_hardware_profile_get();
+            if (w.q35_is_q2_0_model) {
+                double q2_row = (double)p.vocab_size * p.dim * (34.0 / 128.0);
+                cls_bytes = q2_row; /* zero-copy raw Q2_0 head (default) */
+                if (hp_m && hp_m->classifier_explicit) {
+                    switch (hp_m->classifier_fmt) {
+                    case TN_CLS_INT4:
+                        cls_bytes = (double)p.vocab_size * p.dim * 0.5; break;
+                    case TN_CLS_INT8:
+                        cls_bytes = (double)p.vocab_size * p.dim;       break;
+                    default:
+                        cls_bytes = (double)p.vocab_size * p.dim * 2.0; break;
+                    }
+                }
+                /* drop embedding (one row/token) + in-file head, add the
+                 * head actually used */
+                per_tok -= 2.0 * q2_row;
+                per_tok += cls_bytes;
+            }
+            tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
+            if (hp_m) {
+                printf("[profile] Data/token (loaded model): %.0f MB -> "
+                       "ceiling %.1f tok/s at %.1f GB/s\n",
+                       per_tok / (1024.0 * 1024.0),
+                       hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
+            }
+        }
     } else {
         printf("Model format: native ternary\n");
 

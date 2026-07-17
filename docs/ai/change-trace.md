@@ -3,6 +3,26 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-17.
 
+### 2026-07-17 — Fix hardware profiler's hardcoded Data/token + ceiling; correct all ceiling-based claims
+- What: `hardware_profile.c` computed `weight_bytes_per_tok`/`theoretical_ceiling` from
+  compile-time BitNet-2B constants for every model (Ternary-Bonsai-27B: "1149 MB" instead of
+  ~6.8 GB → ~6x-overstated ceiling; SmolLM2: 4.5x *under*stated). Added
+  `tn_hardware_profile_set_model_bytes()` (recomputes bytes/ceiling/`model_fits_l3`/summary;
+  `rebuild_summary()` extracted from the two duplicated snprintf blocks), called from `main.c`
+  after GGUF weight load with real model sizes (embedding/head adjustment for Q2_0-native models,
+  materialized-classifier aware; MoE overcounts, TODO). Startup box now labels its figure
+  "(pre-load est.)"; corrected `[profile]` line prints post-load. Corrected the RCA report
+  (§5 addendum: real ceilings, ~1.5–2x kernel headroom on host-B class, 2.74 tok/s was at host
+  A's bandwidth wall) and the README's ceiling-derived claims.
+- Why: found while answering "what changes reach the tok/s ceiling" — the target itself failed
+  a dimensional sanity check; bug-fix policy requires fixing on discovery.
+- Verification: gcc release + test 46/46 green; clang release/debug green (clang `make test`
+  blocked by the container's missing clang ASan runtime — known, decision-log 2026-06-19);
+  `make demo` end-to-end: corrected line prints, golden output ("Paris") intact.
+- Areas: `src/core/hardware_profile.c`, `include/core/hardware_profile.h`, `src/cli/main.c`,
+  `docs/ai/mistakes.md`, `docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md`, `README.md`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
 ### 2026-07-17 — Consolidated RCA report for the 2.74 → ~1 tok/s Ternary-Bonsai drop
 - What: Added `docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md` — a single consolidated root-cause
   analysis of the post-classifier-work throughput drop, independently re-verifying the

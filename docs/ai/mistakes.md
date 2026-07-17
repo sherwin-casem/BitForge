@@ -5,6 +5,51 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — Hardware profiler's Data/token + tok/s ceiling were hardcoded BitNet-2B constants, wrong for every other model (~6x-overstated ceiling for Ternary-Bonsai-27B)
+- Summary: while pinpointing what it would take to "reach the tok/s ceiling" on the current host,
+  the ceiling itself failed an arithmetic sanity check: a dense 27B model at 2.125 bits/weight
+  must stream ~6.8 GB of weights per token (7.16 GB file minus the embedding, which is read one
+  row per token), yet the profiler printed "Data/token: 1149 MB" and "Ceiling: 10.4–17.1 tok/s".
+- Root cause: `hardware_profile.c` computes `weight_bytes_per_tok` from compile-time
+  `MODEL_TERNARY_BYTES`/`MODEL_VOCAB`/`MODEL_DIM` constants hardcoded for BitNet-b1.58-2B
+  (522 MB + a 128256×2560 BF16 classifier ≈ 1149 MB), because `tn_hardware_profile_init()` runs
+  before the model file is opened. Nothing ever corrected it post-load — a direct violation of
+  the project's own "model shape from GGUF metadata, never hardcoded" rule that survived because
+  the constants were right for the one model the profiler was written against. It also *under*-
+  stated small models (SmolLM2-135M is ~258 MB/token, not 1149).
+- Consequences for published analysis: every "X% of ceiling" claim for Ternary-Bonsai-27B used a
+  ~6x-inflated denominator. Corrected: the real bandwidth ceiling at host A's measured 16 GB/s is
+  ~2.3 tok/s — the recorded 2.74 tok/s means the engine was already at/above the *calibrated*
+  bandwidth (~18.6 GB/s effective; the calibration's streaming probe under-measures real
+  achievable bandwidth — same-day cross-check: this session's host calibrated 12.0 GB/s while a
+  simple 512 MB memcpy loop measured ~22 GB/s effective). Host B runs (~1.0–1.24 tok/s ≈ 7–8.4
+  GB/s) sit at ~60–70% of the calibrated ceiling, so the realistic kernel-side headroom on that
+  host class is ~1.5–2x, not the 6–16x the old ceiling implied. The "29x Q2_0 kernel speedup" and
+  all A/B comparisons are unaffected (relative measurements).
+- Correction: new `tn_hardware_profile_set_model_bytes()` recomputes `weight_bytes_per_tok`,
+  `theoretical_ceiling`, `model_fits_l3`, and the summary from the real loaded model; `main.c`
+  calls it after GGUF weight load (file size minus embedding/head adjustments for Q2_0-native
+  models, honoring a materialized classifier; MoE still overcounts — TODO). The startup box now
+  labels its figure "(pre-load est.)" and a `[profile] Data/token (loaded model): ... -> ceiling
+  ...` line prints post-load. Native BitNet path keeps the (correct-for-it) constants.
+- Affected files: `src/core/hardware_profile.c` (setter + `rebuild_summary()` extraction +
+  relabel), `include/core/hardware_profile.h`, `src/cli/main.c`.
+- Detection: order-of-magnitude sanity check of the ceiling against model size during an RCA
+  follow-up — not by any test; nothing asserts on profiler output.
+- Verification: gcc release + full test suite green (46/46); clang release/debug build green
+  (clang `make test` remains blocked by this container's missing clang ASan runtime — known
+  environment gap, decision-log 2026-06-19). End-to-end: `make demo` (SmolLM2-135M GGUF) prints
+  the corrected `258 MB -> ceiling 44.1 tok/s at 12.0 GB/s` line with golden output ("The capital
+  of France is Paris.") intact. No test links `hardware_profile.c`'s new path, so the
+  sanitizer-instrumented suite adds no additional coverage of this change; the real-binary demo
+  run is the meaningful verification here.
+- Prevention rule: any printed *derived* performance number (ceiling, efficiency-vs-ceiling,
+  data-per-token) must be dimensional-analysis-checked against the actual artifact it describes
+  (model bytes × tokens × bandwidth) before being used as an optimization target or published —
+  a wrong denominator silently corrupts every percentage built on it. Startup-order constraints
+  ("we don't know the model yet") don't justify leaving the estimate uncorrected once the real
+  data exists; add a post-load update instead.
+
 ### 2026-07-17 — The row-count fix for the banner-scrolling bug introduced a new bug: huge blank space below short output
 - Summary: user asked why the freshly-fixed screenshots (banner now visible) had so much blank
   space below the actual content. Root cause: the fix below widened the xterm.js terminal to a

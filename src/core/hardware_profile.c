@@ -19,6 +19,15 @@
  *   30 layers, dim=2560, hidden_dim=6912, vocab=128256
  *   Ternary weights: 2 bits/weight packed as 4 weights/byte
  *   Embedding table: vocab * dim * 2 bytes (BF16)
+ *
+ * 2026-07-17: these constants are only a PRE-LOAD ESTIMATE (profile init
+ * runs before the model file is even opened, so no metadata exists yet).
+ * They are correct for the native BitNet-2B path they were written for,
+ * but were silently used for every model — a 7.16 GB Ternary-Bonsai-27B
+ * GGUF got Data/token "1149 MB" and a ~6x-overstated tok/s ceiling (see
+ * docs/ai/mistakes.md). main.c now calls
+ * tn_hardware_profile_set_model_bytes() with the real loaded-model sizes
+ * to correct weight_bytes_per_tok and theoretical_ceiling post-load.
  */
 #define MODEL_TERNARY_BYTES   (522ULL * 1024 * 1024)  /* ~522 MB packed ternary */
 #define MODEL_EMBED_BYTES     (128256ULL * 2560 * 2)   /* ~628 MB BF16 embedding */
@@ -316,6 +325,20 @@ static int select_prefetch_rows(size_t l2_bytes) {
 static TnHardwareProfile g_profile;
 static bool g_initialized = false;
 
+static void rebuild_summary(void) {
+    const char *cls_name = "BF16";
+    if (g_profile.classifier_fmt == TN_CLS_INT8) cls_name = "INT8";
+    if (g_profile.classifier_fmt == TN_CLS_INT4) cls_name = "INT4";
+
+    snprintf(g_profile.summary, sizeof(g_profile.summary),
+             "%s | %s cls | %dT | %.1f GB/s | ceiling %.0f tok/s",
+             g_profile.cpu->best_backend,
+             cls_name,
+             g_profile.optimal_threads,
+             g_profile.measured_bw_gbps,
+             g_profile.theoretical_ceiling);
+}
+
 const TnHardwareProfile *tn_hardware_profile_init(void) {
     if (g_initialized) return &g_profile;
 
@@ -460,17 +483,7 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     }
 
     /* 11. Summary string */
-    const char *cls_name = "BF16";
-    if (g_profile.classifier_fmt == TN_CLS_INT8) cls_name = "INT8";
-    if (g_profile.classifier_fmt == TN_CLS_INT4) cls_name = "INT4";
-
-    snprintf(g_profile.summary, sizeof(g_profile.summary),
-             "%s | %s cls | %dT | %.1f GB/s | ceiling %.0f tok/s",
-             g_profile.cpu->best_backend,
-             cls_name,
-             g_profile.optimal_threads,
-             g_profile.measured_bw_gbps,
-             g_profile.theoretical_ceiling);
+    rebuild_summary();
 
     g_initialized = true;
     return &g_profile;
@@ -504,18 +517,28 @@ void tn_hardware_profile_set_classifier(TnClassifierFormat fmt) {
         g_profile.theoretical_ceiling = 1.0 / seconds_per_tok;
     }
 
-    /* Update summary */
-    const char *cls_name = "BF16";
-    if (fmt == TN_CLS_INT8) cls_name = "INT8";
-    if (fmt == TN_CLS_INT4) cls_name = "INT4";
+    rebuild_summary();
+}
 
-    snprintf(g_profile.summary, sizeof(g_profile.summary),
-             "%s | %s cls | %dT | %.1f GB/s | ceiling %.0f tok/s",
-             g_profile.cpu->best_backend,
-             cls_name,
-             g_profile.optimal_threads,
-             g_profile.measured_bw_gbps,
-             g_profile.theoretical_ceiling);
+void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok,
+                                          double cls_bytes_per_tok) {
+    if (!g_initialized || weight_bytes_per_tok <= 0.0) return;
+
+    g_profile.weight_bytes_per_tok = weight_bytes_per_tok;
+    g_profile.cls_bytes_per_tok = cls_bytes_per_tok;
+    g_profile.model_fits_l3 =
+        ((double)g_profile.l3_cache_bytes >= weight_bytes_per_tok);
+
+    if (g_profile.measured_bw_gbps > 0.0) {
+        /* Plain bandwidth division, no L3-retention heuristic: the init-time
+         * heuristic was tuned for a ~1.2 GB BitNet working set; for the
+         * multi-GB GGUF models this correction exists for, L3 covers well
+         * under 1% of the per-token stream and the adjustment is noise. */
+        g_profile.theoretical_ceiling =
+            (g_profile.measured_bw_gbps * 1e9) / weight_bytes_per_tok;
+    }
+
+    rebuild_summary();
 }
 
 void tn_hardware_profile_report(const TnHardwareProfile *hp) {
@@ -542,7 +565,11 @@ void tn_hardware_profile_report(const TnHardwareProfile *hp) {
     printf("│ Classifier    : %-35s│\n", cls_name);
     printf("│ Prefetch rows : %-35d│\n", hp->prefetch_rows);
     printf("│ Model in L3   : %-35s│\n", hp->model_fits_l3 ? "YES" : "no");
-    printf("│ Data/token    : %-6.0f MB                           │\n",
+    /* Data/token + Ceiling are a pre-load estimate at this point in the
+     * startup sequence (this report prints before the model file is read);
+     * main.c re-derives both from the real loaded model and prints the
+     * corrected figures after the weights are loaded. */
+    printf("│ Data/token    : %-6.0f MB (pre-load est.)           │\n",
            hp->weight_bytes_per_tok / (1024.0 * 1024.0));
     printf("│ Ceiling       : %-6.1f tok/s (at 100%% BW)          │\n",
            hp->theoretical_ceiling);
