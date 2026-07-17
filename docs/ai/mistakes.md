@@ -101,18 +101,23 @@
   benchmark command against each — capturing real screenshots via the (now-fixed)
   `tools/screenshots/cli/capture.mjs`, pointed at each worktree's binary from the main repo (no
   need for a separate `node_modules`/Playwright install per worktree).
-- Results (both real screenshots, not just log text):
-  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_ce8e90d_1.40toks.png`
-  — commit `ce8e90d` (the exact commit behind the 2.74 tok/s number), rebuilt and rerun today:
-  **1.40 tok/s**. Not 2.74.
-  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_34d3ac9_0.12toks.png`
-  — commit `34d3ac9` (one commit earlier, before the VNNI Q2_0 kernel existed): **0.12 tok/s**,
-  matching the historically-documented pre-VNNI baseline (~0.11-0.12 tok/s) almost exactly.
-  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_HEAD_1.08toks.png`
-  — added on request for a third leg of direct comparison: current HEAD (`72448b2`), same command,
-  same host, run immediately after the other two: **1.08 tok/s** (banner visible, since this is
-  the fixed code). Confirms the same 1.0-1.4 tok/s band as `ce8e90d`'s 1.40 and the earlier
-  same-day `auto` sweeps (1.19-1.37) — old commit and new commit are indistinguishable today.
+- Results (both real screenshots, not just log text; regenerated once more the same day to fix a
+  blank-space capture bug — see the entry above — so the filenames/numbers below are the final,
+  retrimmed versions, not the original 1.40/0.12/1.08 first measured):
+  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_ce8e90d_1.02toks.png`
+  — commit `ce8e90d` (the exact commit behind the 2.74 tok/s number), rebuilt and rerun: **1.02
+  tok/s** (first attempt, before the retrim fix, measured 1.40 tok/s — a different number, same
+  conclusion). Not 2.74 either way.
+  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_34d3ac9_0.08toks.png`
+  — commit `34d3ac9` (one commit earlier, before the VNNI Q2_0 kernel existed): **0.08 tok/s**
+  (first attempt: 0.12), still matching the historically-documented pre-VNNI baseline order of
+  magnitude and still ~13x slower than `ce8e90d`'s same-run number.
+  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_HEAD_0.95toks.png`
+  — third leg, current HEAD, same command, run immediately after the other two: **0.95 tok/s**
+  (first attempt: 1.08). Confirms the same conclusion twice over with two different absolute
+  number sets: old commit and new commit are indistinguishable from each other on this host,
+  whichever day or hour you happen to measure them, while the pre-VNNI control reliably shows a
+  large, real gap both times.
 - Why this is conclusive, not just more of the same evidence: the pre-VNNI commit's result is a
   built-in control. If this rebuild-and-rerun methodology were incapable of detecting a real
   performance difference between commits, `34d3ac9` would have measured close to `ce8e90d`'s
