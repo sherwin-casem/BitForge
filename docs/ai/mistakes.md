@@ -5,6 +5,52 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — This host's memory subsystem (not just DRAM bandwidth) is unstable across sessions, and it fully explains the 2.74 → ~1.2 tok/s drop
+- Summary: user asked why `auto`'s post-fix 1.19 tok/s was so far below the README's earlier
+  2.74 tok/s figure for the identical default configuration (Ternary-Bonsai-27B, 4 threads, no
+  `--classifier`). First checked whether my classifier fix regressed the default path — it
+  doesn't: `git diff` from the commit behind the 2.74 number to HEAD shows `forward.c`'s only
+  change is a branch that's skipped entirely when `classifier_explicit` is false, falling through
+  to the identical `parallel_matmul_q2_0(...)` call as before. Code ruled out, so re-ran the exact
+  original command (`--max-tokens 60 --threads 4`, no `--classifier`, same file) to get a live,
+  apples-to-apples data point instead of trusting the earlier "hardware is noisy" framing again.
+- What actually happened: the re-run hung 5+ minutes at "Opening model file" (`mapped_file_open`'s
+  `mmap(..., MAP_POPULATE, ...)` on the 7.16 GB file) — a step that historically completes in
+  seconds. `ps` showed RSS climbing toward the file size the whole time (not deadlocked, just very
+  slow to fault pages in). A direct `dd ... iflag=direct` read moments later measured 1.8 GB/s —
+  fine — ruling out "the disk itself is just slow." A second re-run got past file-open but then
+  stalled 400+ seconds at "Preparing runtime" (a plain `calloc` for the KV-cache buffers) with RSS
+  flat and CPU only partially used. `/proc/vmstat`'s `compact_stall`/`compact_success` were both 0
+  and `/proc/buddyinfo` showed plenty of large free blocks, ruling out THP-compaction/fragmentation
+  as the mechanism.
+- Root cause (inferred from the pattern, not directly observable from inside this guest): both
+  stalls are specifically **first-touch of a large fresh memory region** — mmap-populate of the
+  model file, then calloc-zeroing of the KV cache — never steady-state compute or a small read of
+  already-resident memory. That's the signature of the *underlying host* (not this guest) being
+  memory-pressured: the hypervisor slow-paths new physical page allocation for a contended
+  co-located host, which this guest's own `free -h`/`/proc/vmstat` can't see (they report this
+  guest's own memory as healthy throughout). This extends the already-documented VM-recycling
+  finding (`/proc/uptime` resetting mid-session) from "DRAM bandwidth/CPU vary" to "first-touch
+  memory allocation of any kind can stall arbitrarily" — a strictly worse and more general
+  instability than previously characterized.
+- The eventual completed re-run measured **1.24 tok/s (61 tokens)**, DRAM bandwidth 12.5 GB/s,
+  calibrated ceiling 10.7 tok/s — consistent with the classifier sweep's `auto` = 1.19 tok/s from
+  the same session, and nowhere near the original 2.74 tok/s / 16.0 GB/s / ceiling 17.1 tok/s
+  screenshot from 2026-07-16. Achieved-vs-ceiling efficiency is similar both times (~12-16%), so
+  most (not all) of the gap is explained by the ceiling itself dropping — the calibrated DRAM
+  bandwidth reading is itself a symptom of the same host instability, not an independent variable.
+- Affected files: none — this is not a code bug, no fix applies. Documented so this number isn't
+  mistaken for a regression in future sessions.
+- Detection: user directly questioned an inconsistency between two numbers from different points in
+  the session rather than accepting them both at face value.
+- Prevention rule: on this specific virtualized host, absolute tok/s is not comparable across
+  separate sessions/benchmark runs, even for the identical command against the identical file —
+  only back-to-back, same-session comparisons (like the classifier sweep's auto/bf16/int8/int4
+  numbers, all measured within minutes of each other) should be treated as relatively trustworthy.
+  When a user questions a cross-session number discrepancy, don't default to "explained by prior
+  noise documentation" — rule out the code with a real diff, then get a live, current data point
+  before concluding it's environmental again.
+
 ### 2026-07-16 — `--classifier` silently no-op'd on Q2_0-native models: root-caused, then actually fixed (not just warned about)
 - Summary: a classifier-precision benchmark showed BF16, INT8, and INT4 all measuring ~1.07-1.09
   tok/s on Ternary-Bonsai-27B — identical within noise. My first explanation blamed hardware

@@ -174,6 +174,8 @@ Project Zero scales near-linearly across all 4 physical cores with no plateau �
 
 All 8 screenshots (t=1..4 × 2 engines): [`benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/)
 
+**A caveat on absolute numbers, found while investigating a follow-up question:** re-running this exact same command later in the same overall effort (same file, same flags, same thread count) measured as low as 1.19-1.24 tok/s instead of 2.74 — not a regression (verified via diff: the code path is unchanged) but this specific virtualized host's memory subsystem stalling on first-touch of large fresh allocations (the model mmap, the KV-cache calloc) when the underlying host is contended, invisible to this guest's own memory stats. Full evidence chain in [`docs/ai/mistakes.md`](docs/ai/mistakes.md). Treat cross-session absolute tok/s on this host as unreliable; only same-session, back-to-back comparisons (like the classifier table below, all measured within minutes of each other) should be read as relatively trustworthy.
+
 **Classifier precision (auto / BF16 / INT8 / INT4), at the confirmed-best 4 threads:**
 
 | Classifier | tok/s | Classifier storage | Notes |

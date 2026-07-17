@@ -3,6 +3,21 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-17.
 
+### 2026-07-17 — Investigated why `auto` measured 1.19-1.24 tok/s vs the README's earlier 2.74 tok/s, instead of assuming noise
+- Decision: user asked directly why the post-fix `auto` number was so much lower than the earlier
+  benchmark's 2.74 tok/s for the identical default configuration. Ruled out the classifier fix as
+  the cause via a real `git diff` (the default path is functionally unchanged), then got a live
+  data point by re-running the exact original command rather than reusing old numbers or asserting
+  "hardware noise" again. Found the re-run stalling for 5-10+ minutes at file-open and runtime-prep
+  steps that historically take seconds, root-caused to first-touch-of-fresh-memory stalls (mmap
+  populate, calloc zeroing) consistent with the underlying host being memory-pressured by other
+  tenants — invisible to this guest's own memory/vmstat readings. Full evidence chain in
+  `mistakes.md`. Confirmed final number: 1.24 tok/s, consistent with the classifier sweep's
+  `auto` = 1.19 tok/s from the same session.
+- Consequence: absolute tok/s numbers from this host are not comparable across separate sessions,
+  only within a single, back-to-back sweep. Added this caveat to the README's benchmark section.
+- Status: ACCEPTED.
+
 ### 2026-07-17 — Actually fixed the classifier no-op (materialization), not just warned about it
 - Decision: the prior entry below (2026-07-16) fixed the classifier no-op bug with an explicit
   runtime warning, judging full per-format materialization too large a change to take on
