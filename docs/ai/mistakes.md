@@ -69,14 +69,19 @@
   `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_34d3ac9_0.12toks.png`
   — commit `34d3ac9` (one commit earlier, before the VNNI Q2_0 kernel existed): **0.12 tok/s**,
   matching the historically-documented pre-VNNI baseline (~0.11-0.12 tok/s) almost exactly.
+  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_HEAD_1.08toks.png`
+  — added on request for a third leg of direct comparison: current HEAD (`72448b2`), same command,
+  same host, run immediately after the other two: **1.08 tok/s** (banner visible, since this is
+  the fixed code). Confirms the same 1.0-1.4 tok/s band as `ce8e90d`'s 1.40 and the earlier
+  same-day `auto` sweeps (1.19-1.37) — old commit and new commit are indistinguishable today.
 - Why this is conclusive, not just more of the same evidence: the pre-VNNI commit's result is a
   built-in control. If this rebuild-and-rerun methodology were incapable of detecting a real
   performance difference between commits, `34d3ac9` would have measured close to `ce8e90d`'s
   number instead of ~12x slower. It didn't — it reproduced the expected, historically-documented
   gap exactly. That proves the test setup *does* detect genuine code-driven differences when they
-  exist. Between `ce8e90d` and current HEAD, no such gap exists (`ce8e90d`=1.40 vs the same-day
-  HEAD measurements of 1.19-1.40) — the absence of a gap there is therefore meaningful, not a
-  failure to look hard enough.
+  exist. Between `ce8e90d`, HEAD, and the earlier same-day sweeps, no such gap exists (1.08-1.40
+  across three separate binaries/builds run over several hours) — the absence of a gap there is
+  therefore meaningful, not a failure to look hard enough.
 - Affected files: none (still not a code bug) — two new screenshots added as durable evidence
   alongside the explanation below, since a "trust me, I diffed it" argument is weaker than
   literally rerunning the old commit and screenshotting the result.
