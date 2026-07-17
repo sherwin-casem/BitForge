@@ -121,30 +121,39 @@ ceiling was fiction: `hardware_profile.c` hardcoded BitNet-2B's geometry (Data/t
 "1149 MB") for **every** model. A dense 27B Q2_0 model really streams ~6.8 GB of weights per
 token (7.16 GB minus the embedding), so the honest bandwidth ceilings are:
 
-| Host | Calibrated BW | Real ceiling (6.8 GB/tok) | Measured | Utilization |
-|---|---|---|---|---|
-| A (2.74 tok/s era) | 16.0 GB/s | ~2.3 tok/s | 2.74 | **>100% of calibrated** (~18.6 GB/s effective — the calibration probe under-measures; a plain memcpy loop on a host-B-class machine reads ~22 GB/s effective vs 12.0 calibrated) |
-| B (current class) | 10.9–12.2 GB/s | ~1.6–1.8 tok/s | 0.95–1.24 | ~60–70% |
+**Second correction (same day, later):** the "calibrated BW" itself was then found to be
+~3x under-measured — `probe_dram_bandwidth()` divided one pass worth of bytes by three
+passes worth of wall time, on top of a serialized volatile read loop (both fixed; same host
+re-measured 12.0 → **41.2 GB/s**). The table below shows both stages of correction:
 
-Consequences, replacing the earlier "6–16% of ceiling" framing in this report:
+| Host | Probe-reported BW | True BW (post-fix) | Real ceiling (~6.5 GiB/tok) | Measured | True utilization |
+|---|---|---|---|---|---|
+| A (2.74 tok/s era) | 16.0 GB/s | ~48 GB/s (inferred, ×3) | ~7 tok/s | 2.74 | ~40% |
+| B (current class) | 10.9–12.2 GB/s | 41.2 GB/s (measured) | **6.0 tok/s** | 0.95–1.24 then; **3.56 after the kernel fix below** | 20% → **59%** |
 
-- On host A the engine was **already at or beyond the calibrated bandwidth wall** — 2.74 tok/s
-  was near-optimal for that hardware, and no code change would have "reached 17.1 tok/s."
-- On host-B-class hardware the honest kernel-side headroom is **~1.5–2x** (to ~1.6–2+ tok/s),
-  concentrated in the compute-bound stretches of `dot_q2_0_row_vnni`
-  (`src/math/matmul_q2_0_vnni.c`): a full `_mm512_reduce_add_epi32` horizontal reduction **per
-  128-element block**, a branchy scalar fp16→f32 scale conversion per block (F16C is available
-  and unused here), and the ~15-instruction SSE 2-bit unpack on hosts without working VBMI
-  (the current host doesn't advertise VBMI at all). Fix shape: per-row float vector accumulator
-  (`_mm512_cvtepi32_ps` + FMA by the broadcast block scale, one horizontal reduce per row, with
-  the `sum_qx·d` correction accumulated separately), vectorized scale conversion, and a wider
-  AVX-512BW unpack. Verify with `TN_STEP_TIMING=1` before/after and a same-session A/B.
-- Going **above** ~2 tok/s-class numbers on this hardware is not a kernel problem: at 2.125
-  bits/weight there is no smaller format to stream, so the only levers are faster memory
-  (hardware), or amortizing the weight stream across multiple sequences/tokens per pass
-  (batched or speculative decoding — an architectural feature, not an optimization).
+Consequences, replacing the earlier "6–16% of ceiling" framing in this report (and the
+first addendum draft's "host A was at the bandwidth wall" claim — it was at ~40% of *true*
+bandwidth; it only looked wall-limited against the broken probe number):
+
+- The kernel-side headroom was real and larger than the first estimate. Implemented on this
+  branch: the `dot_q2_0_row_vnni` restructure below, verified end-to-end at **2.74/2.80 →
+  3.56/3.54 tok/s (+28%, interleaved same-session A/B, token-identical output)** — the
+  optimized kernel on a host-B-class VM now beats the original host-A 2.74 headline.
+- The two defects behind that +28% (both now fixed): a full `_mm512_reduce_add_epi32`
+  horizontal reduction **per 128-element block** — replaced by a per-row float vector
+  accumulator with one reduce per row — and a branchy scalar fp16→f32 scale conversion per
+  block, replaced by F16C. Remaining headroom to the honest 6.0 ceiling: the
+  ~15-instruction SSE 2-bit unpack on hosts without working VBMI (this host has no VBMI at
+  all — a wider AVX-512BW unpack is the specified follow-up), multi-row blocking, and the
+  uninstrumented attention/DeltaNet stretch of the per-token time.
+- Going **above** the ~6 tok/s single-stream ceiling on this hardware is not a kernel
+  problem: at 2.125 bits/weight there is no smaller format to stream, so the only levers are
+  faster memory (hardware), or amortizing the weight stream across multiple sequences/tokens
+  per pass (batched or speculative decoding — an architectural feature, not an optimization).
 
 The profiler bug is fixed in this branch (`tn_hardware_profile_set_model_bytes()`, called
 post-load from `main.c`; startup box now labeled "(pre-load est.)"), verified end-to-end via
-`make demo` (SmolLM2 now reports its true 258 MB/token instead of 1149). Full writeup:
-`docs/ai/mistakes.md` (2026-07-17, "Hardware profiler's Data/token…").
+`make demo` (SmolLM2 now reports its true 258 MB/token instead of 1149). The probe fix,
+kernel optimization, and their verification records live in
+`docs/architecture/CEILING_CALCULATION.md` (the full ceiling-calculation spec). Full
+writeups: `docs/ai/mistakes.md` (2026-07-17 entries).

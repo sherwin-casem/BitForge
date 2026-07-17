@@ -3,6 +3,29 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-17.
 
+### 2026-07-17 — Ceiling spec + probe fix (~3x) + Q2_0 kernel optimization (+28% end-to-end)
+- What: (1) `docs/architecture/CEILING_CALCULATION.md` — full spec/audit of the tok/s ceiling
+  (probe methodology, 4 computation sites, per-model byte accounting, error bounds, bridging
+  matrix). (2) Fixed `probe_dram_bandwidth()`'s ~3x accounting error (3 passes timed, 1 pass of
+  bytes counted) + serialized volatile reads: same host 12.0 → 41.2 GB/s measured. (3) Optimized
+  `dot_q2_0_row_vnni` (per-row float vector accumulator, F16C scales; `_ref` kept for A/B):
+  micro-bench 1.32-1.68x (`tools/bench_q2_0`, `make bench-q2`), end-to-end 2.74/2.80 →
+  3.56/3.54 tok/s (+28%), token-identical output, on the real downloaded 7.16 GB model.
+  (4) calibration.c "Speed opt" line now prints computed values (was hardcoded "(INT8, ~+36%)").
+  (5) Fixed stale 18B/64 block-layout comment in matmul_q2_0.h. Corrected README + RCA claims
+  built on the broken probe numbers ("2.74 was at the bandwidth wall" → ~40% of true BW; honest
+  ceiling ~6-7 tok/s, current utilization 59%).
+- Why: user asked for detailed ceiling documentation, an independent review, and gap-bridging;
+  the probe accounting bug surfaced during the planned probe improvement.
+- Verification: clean gcc release/test 46/46 green (a mixed clang/gcc `build/` from earlier
+  compiler cycling first produced a bogus `test_simd_vnni` link failure — the documented
+  mtime-staleness Makefile trap; clean rebuild resolved it); clang compile-checks of changed
+  TUs zero-warning; interleaved same-session model A/B ×2 rounds; `TN_STEP_TIMING=1` breakdowns.
+- Areas: `src/core/hardware_profile.c`, `src/core/calibration.c`, `src/math/matmul_q2_0_vnni.c`,
+  `include/math/matmul_q2_0.h`, `tools/bench_q2_0.c`, `Makefile`, `CMakeLists.txt`,
+  `docs/architecture/CEILING_CALCULATION.md`, RCA report, README, mistakes.md.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
 ### 2026-07-17 — Fix hardware profiler's hardcoded Data/token + ceiling; correct all ceiling-based claims
 - What: `hardware_profile.c` computed `weight_bytes_per_tok`/`theoretical_ceiling` from
   compile-time BitNet-2B constants for every model (Ternary-Bonsai-27B: "1149 MB" instead of

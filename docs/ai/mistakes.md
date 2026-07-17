@@ -5,6 +5,47 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — DRAM bandwidth probe under-measured ~3.4x (accounting bug + serialized reads); every historical "measured GB/s" and ceiling-utilization claim was wrong
+- Summary: while implementing the planned probe improvement (serialized volatile reads →
+  multi-accumulator streaming), reading the outer timing loop revealed a second, larger bug:
+  `bw_thread_fn` ran its **3 read passes inside one timed create/join round**, while the
+  caller's aggregate divided **one** pass worth of bytes by the wall time of all three — a
+  systematic ~3x under-measurement. The per-thread bytes/elapsed figures (correctly accounted)
+  were computed and then discarded in favor of the broken aggregate.
+- Fix: threads now run exactly one pass per round (the caller's existing 3-round best-of loop
+  provides repetition), and each pass reads every byte via 8 independent 64-bit accumulator
+  chains instead of one volatile char per 64-byte line (volatile scalar chains can't keep line
+  fills in flight). Same host, same session: **12.0 → 41.2 GB/s**. Cross-checks that had
+  already exposed the discrepancy: memcpy ~22 GB/s effective (≈44 GB/s bus traffic), the Q2_0
+  kernel itself streaming 29 GB/s from a >L3 buffer, and — in hindsight the loudest tell —
+  SmolLM2 measuring 56.5 tok/s against a "44.1 tok/s at 100% BW" ceiling, a physical
+  impossibility that the in-code comment had rationalized as "prefetch effectiveness" and this
+  session initially waved through as "probe bias" without quantifying it.
+- Consequences: every "DRAM bandwidth (measured)" ever printed (16.0, 14.0-17.3, 12.2, 10.9
+  GB/s...) is ~3x low; every ceiling and utilization percentage derived from one is wrong,
+  including the BitNet-era "95% of ceiling" claims (true utilization was ~3x lower) and this
+  same day's RCA-addendum claim that host A's 2.74 tok/s was "at the bandwidth wall" (it was at
+  ~40% of true bandwidth). Corrected in `docs/architecture/CEILING_CALCULATION.md` (spec +
+  audit), the RCA addendum, and the README. A/B comparisons and relative claims are unaffected.
+- Related result recorded here for cross-reference: with the honest ceiling in place, the Q2_0
+  VNNI row-dot restructure (per-row float vector accumulator replacing a per-128-element-block
+  `_mm512_reduce_add_epi32`, F16C scale decode; frozen `_ref` variant kept for in-binary A/B via
+  new `tools/bench_q2_0`) measured 1.32-1.68x per shape and **2.74/2.80 → 3.56/3.54 tok/s
+  (+28%) end-to-end** on the real 27B model, interleaved same-session, token-identical greedy
+  output, `TN_STEP_TIMING=1` attribution (Dense FFN 17.7→13.1 s, LM head 1.19→0.83 s per 61
+  tokens). Current standing: 3.56 measured vs 6.0 ceiling = 59% utilization.
+- Affected files: `src/core/hardware_profile.c` (probe), `src/math/matmul_q2_0_vnni.c` +
+  `include/math/matmul_q2_0.h` + `Makefile`/`CMakeLists.txt` (`-mf16c`) + `tools/bench_q2_0.c`
+  (kernel + bench), docs as above.
+- Detection: code reading during a planned adjacent improvement — not by any test; nothing
+  asserts on probe output. The "engine exceeds its own 100%-of-bandwidth ceiling" observation
+  had been visible in outputs for weeks.
+- Prevention rule: when a benchmark's own reported number is *physically impossible* relative
+  to another trusted measurement (throughput above "100% of bandwidth"), stop and reconcile the
+  two before publishing either — "the probe is conservative" is a hypothesis to quantify, not a
+  caveat to file away. For any timed loop, assert the bytes-counted and the passes-timed come
+  from the same code path; best-of-N logic belongs in exactly one layer.
+
 ### 2026-07-17 — Hardware profiler's Data/token + tok/s ceiling were hardcoded BitNet-2B constants, wrong for every other model (~6x-overstated ceiling for Ternary-Bonsai-27B)
 - Summary: while pinpointing what it would take to "reach the tok/s ceiling" on the current host,
   the ceiling itself failed an arithmetic sanity check: a dense 27B model at 2.125 bits/weight

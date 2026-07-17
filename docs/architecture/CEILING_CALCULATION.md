@@ -21,26 +21,39 @@ the four computation sites gets them wrong or right, and how big the error bars 
 
 ## 2. Operand 1 — measured DRAM bandwidth
 
-`probe_dram_bandwidth()` — `src/core/hardware_profile.c:130` (worker: `bw_thread_fn`, :106).
+`probe_dram_bandwidth()` — `src/core/hardware_profile.c` (worker: `bw_thread_fn`). Current
+(fixed 2026-07-17) methodology:
 
 - One thread per physical core (clamped to [1,8]); per-thread 512 MB buffer (grown to
   L3+64 MB if L3 > 512 MB; total capped at 4 GB). Pages faulted in by writing every 4096th
   byte before timing.
-- Access pattern: sequential **read of one `volatile char` per 64-byte cache line**,
-  accumulated into a `volatile int64_t` sink. Bytes counted = full buffer size (each touched
-  line is a full line fill from DRAM, so the accounting is correct).
-- 3 passes, best kept, `CLOCK_MONOTONIC` wall time; the returned figure is the *aggregate*
-  across concurrently running threads (deliberately includes bus contention).
+- Access pattern: each thread reads **every byte** of its buffer through 8 independent
+  64-bit accumulator chains (one cache line per iteration — the compiler vectorizes, and
+  independent chains let the core keep many line fills in flight), one pass per timed round.
+- 3 rounds; each round's aggregate = total bytes across all threads / wall-clock time of the
+  create-run-join round (deliberately includes bus contention; thread create/join overhead
+  biases slightly conservative). Best round kept.
 
-**Known conservative bias.** The `volatile` scalar chain executes one serialized 1-byte load
-+ 1 store (to the volatile sink) per line and cannot keep many line fills in flight; the
-measurement leans on the hardware prefetcher alone. Measured on a host-B-class VM
-(2026-07-17): probe = **12.0 GB/s**, while a plain 512 MB `memcpy` loop on the same host
-measured **~22 GB/s effective** (read+write counted). True streaming-read bandwidth is
-therefore materially higher than the probe reports, and every ceiling derived from it is a
-**lower-bound estimate** — the engine legitimately exceeding a printed ceiling (e.g. host A's
-2.74 tok/s vs a 16.0 GB/s-derived ~2.3 ceiling, or SmolLM2's 56.5 vs 44.1) is expected, not
-anomalous. Improvement path: multi-accumulator vectorized read loop (§7 option B).
+**History — two bugs fixed on 2026-07-17 that had compounded to ~3.4x under-measurement**
+(full writeup in `docs/ai/mistakes.md`):
+
+1. *Accounting (~3x):* each worker ran its 3 read passes **inside one timed round**, while
+   the wall-clock aggregate divided only one pass worth of bytes by the elapsed time of all
+   three. The correctly-accounted per-thread figures were computed and then discarded.
+2. *Serialized reads:* one `volatile char` load + a volatile-sink store per 64-byte line — a
+   dependency chain that cannot keep line fills in flight.
+
+Same host, same session: old probe **12.0 GB/s** → fixed probe **41.2 GB/s**. Every
+"DRAM bandwidth (measured)" figure printed before the fix (16.0, 14.0–17.3, 12.2, 10.9…)
+is ~3x low, and every ceiling derived from one inherits that. Cross-checks that exposed it:
+a plain memcpy loop measured ~22 GB/s *effective* (read+write ≈ 44 GB/s of bus traffic —
+consistent with 41.2), and the Q2_0 kernel itself streams 29 GB/s of packed weights from a
+larger-than-L3 buffer (`tools/bench_q2_0`), which no honest 12 GB/s host could do.
+The strongest tell in hindsight: under the old probe, SmolLM2 measured 56.5 tok/s against a
+44.1 tok/s "100% of bandwidth" ceiling — a physical impossibility for a >L3 working set,
+which should have been read as evidence the denominator was wrong, not as "prefetch
+effectiveness" (the in-code comment's explanation). Under the fixed probe the ceiling is a
+genuine upper bound again (SmolLM2: 56.5 measured vs ~152 ceiling, 37%).
 
 ## 3. Operand 2 — weight bytes per token, per model class
 
@@ -93,19 +106,24 @@ layers hold O(1) state and add nothing that scales with position.
 Consumers: CLI stdout only (startup box, `Active:` summary line, post-load `[profile]` line,
 calibration box). Nothing in `src/api/` (`/metrics`, web UI) reads any of these fields.
 
-## 5. Worked examples (all verified live on 2026-07-17, host-B-class VM, probe 12.0-12.2 GB/s)
+## 5. Worked examples (verified live on 2026-07-17, host-B-class VM; **fixed probe: 41.2 GB/s**)
 
-| Model | weight_bytes/token | Ceiling @ probe BW | Measured | Notes |
+| Model | weight_bytes/token | Ceiling @ 41.2 GB/s | Measured | Utilization |
 |---|---|---|---|---|
-| BitNet-2B native, BF16 cls | ~1179 MB pre-L3-heuristic | (host-dependent) | 95% of ceiling historically | The class the constants were built for |
-| SmolLM2-135M F16 | 258 MB (real file) vs 1149 MB (old constants) | 44.1 tok/s | 56.5 tok/s | Exceeds ceiling: probe bias + partial cache residency; old constants *under*-stated 4.5x |
-| Ternary-Bonsai-27B Q2_0 | ~6.8 GB (7.165 GB file − 338 MB embed) vs "1149 MB" (old) | ~1.7-1.8 tok/s | 0.95-1.24 tok/s (this host class); 2.74 on the 16 GB/s host A | Old ceiling overstated ~6x; host A's 2.74 ≈ 18.6 GB/s effective — at/above its probe figure |
+| SmolLM2-135M F16 | 258 MiB (real file; old constants said 1149 — 4.5x over) | ~152 tok/s | 56.5 tok/s | ~37% |
+| Ternary-Bonsai-27B Q2_0 | 6511 MiB (7.165 GB file − embed − in-file head + zero-copy head) | **6.0 tok/s** | **3.56 tok/s** (optimized kernel; 2.74-2.80 pre-optimization, same session interleaved) | **59%** (was 45%) |
+| BitNet-2B native, BF16 cls | ~1179 MB pre-L3-heuristic (constants correct for this model) | (host-dependent) | — | Historical "95% of ceiling" claims used the pre-fix probe, so true utilization was ~3x lower; re-measure before citing |
+
+Historical translation: host A's famous 2.74 tok/s ≈ 18.6 GB/s of effective weight streaming.
+Its probe-reported "16.0 GB/s" was ~3x low (true ~48 GB/s), so that run sat at roughly **40%
+of its real ceiling (~7 tok/s)** — not "at the bandwidth wall" as the pre-fix numbers
+suggested. The optimized kernel's 3.56 tok/s on today's host already exceeds it.
 
 ## 6. Error sources, bounded
 
 | Source | Direction | Magnitude |
 |---|---|---|
-| Probe under-measures streaming bandwidth | Ceiling too LOW | ~1.3-1.8x on measured hosts (12.0 probe vs ~22 GB/s memcpy-effective) |
+| Probe under-measurement (**fixed 2026-07-17**) | Ceiling was too LOW | was ~3.4x (12.0 → 41.2 GB/s same host); residual bias now limited to thread create/join overhead (small, conservative) |
 | KV traffic excluded | Ceiling too HIGH at long context | ~2% @4K ctx, ~10% @22K (27B model; §3) |
 | Generic-GGUF embedding over-count | Ceiling too LOW | ≤ embed/file share (few % for large models; ~0 for tied-embedding) |
 | MoE over-count | Ceiling too LOW | Up to (total−active)/total expert share — unquantified, TODO |
@@ -113,22 +131,26 @@ calibration box). Nothing in `src/api/` (`/metrics`, web UI) reads any of these 
 
 ## 7. Bridging the gap between measured tok/s and the ceiling
 
-Current gap on host-B-class hardware for Ternary-Bonsai-27B: measured 0.95-1.24 vs ~1.7
-ceiling (~60-70% utilization). Options considered:
+Current state on this host for Ternary-Bonsai-27B, after this pass: **3.56 tok/s measured vs
+6.0 tok/s ceiling (59%)**, up from 2.74-2.80 (45%) pre-optimization. Options considered:
 
-- **A. Kernel efficiency (implemented this pass — see Review log / benchmark records)**:
+- **A. Kernel efficiency (IMPLEMENTED, verified)**:
   `dot_q2_0_row_vnni()` (`src/math/matmul_q2_0_vnni.c`) paid a full cross-lane
   `_mm512_reduce_add_epi32` **per 128-element block** plus a branchy scalar fp16 scale
   conversion per block. A1: per-row float vector accumulator (`_mm512_cvtepi32_ps` + FMA by
   broadcast scale, one horizontal reduce per row, `Σ sum_qx·d` correction accumulated
-  scalar-side). A2: F16C scale decode. A3 (stretch): wider AVX-512BW 2-bit unpack for hosts
-  without (working) VBMI; multi-row blocking. Verified by `tools/bench_q2_0` (both kernel
-  variants in one binary — host-drift-immune A/B) + `tests/test_q2_0_matmul.c` correctness
-  + a same-session end-to-end model A/B.
-- **B. Measurement honesty**: fix the probe's serialized read loop (multi-accumulator,
-  vectorized) so the reported ceiling stops under-stating reality. Raises the *target*, not
-  the throughput; changes calibration-cache hardware fingerprint inputs (acceptable — that
-  cache re-triggers on hardware change by design).
+  scalar-side). A2: F16C scale decode. A3 (stretch, NOT yet done): wider AVX-512BW 2-bit
+  unpack for hosts without (working) VBMI; multi-row blocking. **Results** —
+  `tools/bench_q2_0` (both variants in one binary, host-drift-immune, 4 threads, medians of
+  7 interleaved reps): attn 5120×5120 **1.32x**, ffn-down 17408×5120 **1.48x**, lm-head
+  5120×248320 **1.68x** (17.3 → 29.0 GB/s), max output diff ~1e-6; `tests/test_q2_0_matmul`
+  green. End-to-end (real model, interleaved same-session, 60-token greedy, 4 threads):
+  baseline 2.74/2.80 → optimized **3.56/3.54 tok/s (+28%)**, generated text
+  token-identical; `TN_STEP_TIMING=1`: Dense FFN 17.7 → 13.1 s, LM head 1.19 → 0.83 s per
+  61-token generation.
+- **B. Measurement honesty (IMPLEMENTED)**: fixed the probe's ~3x accounting error and its
+  serialized read loop (§2). Raises the *target*, not the throughput: same host re-measured
+  12.0 → 41.2 GB/s, giving the honest 6.0 tok/s ceiling above.
 - **C. Configuration (exists)**: `--classifier int8/int4` trades RAM for LM-head kernel
   efficiency (2.60/2.62 vs 1.19 tok/s in the one clean same-session sweep; re-evaluate after
   A — a fixed Q2_0 kernel should let zero-copy win, since it streams 3.6x fewer head bytes).
