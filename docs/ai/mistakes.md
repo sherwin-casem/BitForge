@@ -5,6 +5,45 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — The row-count fix for the banner-scrolling bug introduced a new bug: huge blank space below short output
+- Summary: user asked why the freshly-fixed screenshots (banner now visible) had so much blank
+  space below the actual content. Root cause: the fix below widened the xterm.js terminal to a
+  fixed `rows: 170` so Ternary-Bonsai-27B's long startup output wouldn't scroll the banner out of
+  view — but most captures use far fewer than 170 rows, and `page.screenshot({ fullPage: true })`
+  was screenshotting the *entire* fixed 170-row terminal regardless of how much of it was actually
+  written to, padding every image with a wall of empty rows.
+- Investigation: wrote a small debug script to inspect DOM heights before/after calling
+  `term.resize()` down to the last used row. Confirmed the terminal element itself (`#term`) and
+  `document.body.scrollHeight` both correctly shrink after resize, but
+  `document.documentElement.scrollHeight` — what Playwright's `fullPage: true` actually measures —
+  stays clamped to the 1200px viewport height, because browsers don't let the document's scroll
+  height report below the viewport height when content is shorter than the viewport. So the resize
+  worked, but the screenshot mechanism couldn't see it.
+- Correction: `capture.mjs` now (1) resizes the xterm.js terminal down to `lastUsedRow + 2` after
+  the raw session bytes are written and rendered, using the buffer API to find the last non-blank
+  row, and (2) screenshots the `body` element directly (`page.locator('body').screenshot()`)
+  instead of `page.screenshot({ fullPage: true })` — an element screenshot uses the element's own
+  bounding box, which isn't clamped to the viewport the way the document's scrollHeight is.
+  Verified with a synthetic 3-line test (900x1200 padded image → 900x186 correctly-sized image)
+  before regenerating all 9 affected screenshots (6 current-HEAD + 3 commit-bisection).
+- Consequence for the numbers displayed: since regenerating required rerunning the real model
+  again, and this host's performance keeps drifting (documented at length below), the embedded
+  tok/s in these screenshots changed *again* on this pass (e.g. classifier auto/bf16/int8/int4:
+  0.59/1.02/0.70/1.04) — and this time even the previously-consistent ordering (BF16 slowest,
+  INT4 fastest, reproduced across two earlier sweeps) broke, with INT8 landing below BF16. Recorded
+  as a data point, not alarming: it reinforces that only "the four formats now genuinely differ in
+  code path" is a safe claim on this host, not any specific ranking or magnitude between them.
+- Affected files: `tools/screenshots/cli/capture.mjs`, all screenshots under
+  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/` that used `PZ_CAPTURE_ROWS`.
+- Detection: user visually inspected the actual shipped screenshots and asked a direct "why does
+  X look wrong" question rather than trusting the prior fix was complete.
+- Prevention rule: when sizing a fixed-dimension capture/render buffer generously to avoid clipping
+  worst-case content, remember the buffer is now oversized for the common case — either trim to
+  actual content before the capture step, or make the capture mechanism content-aware, rather than
+  screenshotting the full fixed buffer. A fix for "content gets cut off" and a fix for "there's
+  wasted empty space" pull in opposite directions on the same size parameter; sizing generously
+  and calling it done leaves the second problem for the same person to be asked about later.
+
 ### 2026-07-17 — Banner was printing correctly all along; the screenshot capture tool was scrolling it off before the shot
 - Summary: user pointed out the ASCII banner still wasn't visible in the benchmark screenshots
   despite the earlier fix making `main.c` print it unconditionally in a TTY. Checked file mtimes
