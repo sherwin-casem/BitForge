@@ -18,6 +18,12 @@
 // PZ_CAPTURE_TIMEOUT_MS to raise it for slow real-model runs (e.g. a large
 // model at a few hundred ms/token easily needs several minutes).
 //
+// The terminal defaults to 70 rows; output longer than that scrolls earlier
+// content (including the startup banner) out of view before the screenshot
+// is taken. Set PZ_CAPTURE_ROWS to a larger value for runs with a lot of
+// startup output (calibration + hardware profile + long model config), so
+// nothing scrolls off before the final screenshot.
+//
 // Example (one-shot):
 //   node tools/screenshots/cli/capture.mjs docs/design/screenshots/cli-repl.png \
 //     -- ./adaptive_ai_engine --model models/smollm2.gguf --color always --threads 2
@@ -82,7 +88,10 @@ async function main() {
 
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 900, height: 1200 } });
-  await page.goto(pathToFileURL(join(__dirname, 'capture.html')).href);
+  const rowsOverride = process.env.PZ_CAPTURE_ROWS;
+  const captureUrl = pathToFileURL(join(__dirname, 'capture.html'));
+  if (rowsOverride) captureUrl.searchParams.set('rows', rowsOverride);
+  await page.goto(captureUrl.href);
   await page.waitForFunction(() => window.pzTerm !== undefined);
 
   // Feed raw bytes as a base64 string across the Node/browser boundary to
@@ -105,7 +114,7 @@ async function main() {
     }, caption);
   }
 
-  await page.screenshot({ path: outputPath });
+  await page.screenshot({ path: outputPath, fullPage: true });
   await browser.close();
   console.log(`Wrote ${outputPath}`);
 }
