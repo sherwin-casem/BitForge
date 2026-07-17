@@ -44,6 +44,12 @@ typedef struct {
 
     /* ── Derived tuning parameters ── */
     TnClassifierFormat classifier_fmt;
+    bool   classifier_explicit;  /* true only if the user passed --classifier
+                                    (vs. classifier_fmt being an auto-picked
+                                    default) — gates whether Q2_0-native models
+                                    pay to materialize a separate classifier
+                                    copy (see gguf_loader.c) instead of always
+                                    doing so regardless of user intent. */
     int    prefetch_rows;        /* rows to prefetch ahead in matmul */
     bool   use_nt_stores;        /* non-temporal stores for large outputs */
     bool   model_fits_l3;        /* true if ternary weights fit in L3 */

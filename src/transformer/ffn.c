@@ -2,6 +2,7 @@
 #include "transformer/moe_ffn.h"
 #include "math/parallel_matmul.h"
 #include "math/matmul_f16.h"
+#include "math/matmul_q2_0.h"
 #include "math/simd_dispatch.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
@@ -47,6 +48,9 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
     } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
         parallel_matmul_f16(s->hb,  s->xb, (const tn_u16 *)w->w1[layer], dim, hidden_dim, tp);
         parallel_matmul_f16(s->hb2, s->xb, (const tn_u16 *)w->w3[layer], dim, hidden_dim, tp);
+    } else if (w->layer_weight_type == WEIGHT_TYPE_Q2_0) {
+        parallel_matmul_q2_0(s->hb,  s->xb, (const uint8_t *)w->w1[layer], dim, hidden_dim, tp);
+        parallel_matmul_q2_0(s->hb2, s->xb, (const uint8_t *)w->w3[layer], dim, hidden_dim, tp);
     } else {
         parallel_matmul_float32(s->hb,  s->xb, (const float *)w->w1[layer], dim, hidden_dim, tp);
         parallel_matmul_float32(s->hb2, s->xb, (const float *)w->w3[layer], dim, hidden_dim, tp);
@@ -78,6 +82,8 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
         parallel_ternary_matmul_packed(s->xb, s->hb, (const tn_u8 *)w->w2[layer], hidden_dim, dim, w->s2[layer], tp);
     } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
         parallel_matmul_f16(s->xb, s->hb, (const tn_u16 *)w->w2[layer], hidden_dim, dim, tp);
+    } else if (w->layer_weight_type == WEIGHT_TYPE_Q2_0) {
+        parallel_matmul_q2_0(s->xb, s->hb, (const uint8_t *)w->w2[layer], hidden_dim, dim, tp);
     } else {
         parallel_matmul_float32(s->xb, s->hb, (const float *)w->w2[layer], hidden_dim, dim, tp);
     }

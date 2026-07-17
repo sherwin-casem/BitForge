@@ -32,12 +32,31 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     w->rms_attn_sub_norm = (float **)calloc(nl, sizeof(float *));
     w->rms_ffn_sub_norm = (float **)calloc(nl, sizeof(float *));
 
+    /* Qwen3.5/3.6 hybrid attention — cheap per-layer pointer arrays,
+     * always allocated (NULL contents) like rms_attn_sub_norm above;
+     * populated only when MoEConfig.has_linear_attn is set. */
+    w->q35_attn_q_norm = (float **)calloc(nl, sizeof(float *));
+    w->q35_attn_k_norm = (float **)calloc(nl, sizeof(float *));
+    w->q35_ssm_qkv     = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+    w->q35_ssm_gate    = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+    w->q35_ssm_conv1d  = (float **)calloc(nl, sizeof(float *));
+    w->q35_ssm_dt_bias = (float **)calloc(nl, sizeof(float *));
+    w->q35_ssm_a       = (float **)calloc(nl, sizeof(float *));
+    w->q35_ssm_alpha   = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+    w->q35_ssm_beta    = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+    w->q35_ssm_norm    = (float **)calloc(nl, sizeof(float *));
+    w->q35_ssm_out     = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+
     if (!w->wq || !w->wk || !w->wv || !w->wo ||
         !w->sq || !w->sk || !w->sv || !w->so ||
         !w->w1 || !w->w2 || !w->w3 ||
         !w->s1 || !w->s2 || !w->s3 ||
         !w->rms_att_weight || !w->rms_ffn_weight ||
-        !w->rms_attn_sub_norm || !w->rms_ffn_sub_norm) {
+        !w->rms_attn_sub_norm || !w->rms_ffn_sub_norm ||
+        !w->q35_attn_q_norm || !w->q35_attn_k_norm ||
+        !w->q35_ssm_qkv || !w->q35_ssm_gate || !w->q35_ssm_conv1d ||
+        !w->q35_ssm_dt_bias || !w->q35_ssm_a || !w->q35_ssm_alpha ||
+        !w->q35_ssm_beta || !w->q35_ssm_norm || !w->q35_ssm_out) {
         weights_free_pointers(w);
         return TN_ERR_OOM;
     }
@@ -45,12 +64,35 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
 }
 
 void weights_free_pointers(TransformerWeights *w) {
-    if (w->wq) free(w->wq); if (w->wk) free(w->wk); if (w->wv) free(w->wv); if (w->wo) free(w->wo);
-    if (w->sq) free(w->sq); if (w->sk) free(w->sk); if (w->sv) free(w->sv); if (w->so) free(w->so);
-    if (w->w1) free(w->w1); if (w->w2) free(w->w2); if (w->w3) free(w->w3);
-    if (w->s1) free(w->s1); if (w->s2) free(w->s2); if (w->s3) free(w->s3);
-    if (w->rms_att_weight) free(w->rms_att_weight); if (w->rms_ffn_weight) free(w->rms_ffn_weight);
-    if (w->rms_attn_sub_norm) free(w->rms_attn_sub_norm); if (w->rms_ffn_sub_norm) free(w->rms_ffn_sub_norm);
+    if (w->wq) free(w->wq);
+    if (w->wk) free(w->wk);
+    if (w->wv) free(w->wv);
+    if (w->wo) free(w->wo);
+    if (w->sq) free(w->sq);
+    if (w->sk) free(w->sk);
+    if (w->sv) free(w->sv);
+    if (w->so) free(w->so);
+    if (w->w1) free(w->w1);
+    if (w->w2) free(w->w2);
+    if (w->w3) free(w->w3);
+    if (w->s1) free(w->s1);
+    if (w->s2) free(w->s2);
+    if (w->s3) free(w->s3);
+    if (w->rms_att_weight) free(w->rms_att_weight);
+    if (w->rms_ffn_weight) free(w->rms_ffn_weight);
+    if (w->rms_attn_sub_norm) free(w->rms_attn_sub_norm);
+    if (w->rms_ffn_sub_norm) free(w->rms_ffn_sub_norm);
+    if (w->q35_attn_q_norm) free(w->q35_attn_q_norm);
+    if (w->q35_attn_k_norm) free(w->q35_attn_k_norm);
+    if (w->q35_ssm_qkv) free(w->q35_ssm_qkv);
+    if (w->q35_ssm_gate) free(w->q35_ssm_gate);
+    if (w->q35_ssm_conv1d) free(w->q35_ssm_conv1d);
+    if (w->q35_ssm_dt_bias) free(w->q35_ssm_dt_bias);
+    if (w->q35_ssm_a) free(w->q35_ssm_a);
+    if (w->q35_ssm_alpha) free(w->q35_ssm_alpha);
+    if (w->q35_ssm_beta) free(w->q35_ssm_beta);
+    if (w->q35_ssm_norm) free(w->q35_ssm_norm);
+    if (w->q35_ssm_out) free(w->q35_ssm_out);
     if (w->wcls_i8) free(w->wcls_i8);
     if (w->wcls_i8_scales) free(w->wcls_i8_scales);
     if (w->wcls_i4) free(w->wcls_i4);
@@ -270,12 +312,14 @@ void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
                     tn_u32 bits0 = (tn_u32)row[j] << 16;
                     float f0; memcpy(&f0, &bits0, sizeof(float));
                     int q0 = (int)(f0 * inv_scale_i4 + (f0 >= 0 ? 0.5f : -0.5f));
-                    if (q0 > 7) q0 = 7; if (q0 < -7) q0 = -7;
+                    if (q0 > 7) q0 = 7;
+                    if (q0 < -7) q0 = -7;
 
                     tn_u32 bits1 = (tn_u32)row[j+1] << 16;
                     float f1; memcpy(&f1, &bits1, sizeof(float));
                     int q1 = (int)(f1 * inv_scale_i4 + (f1 >= 0 ? 0.5f : -0.5f));
-                    if (q1 > 7) q1 = 7; if (q1 < -7) q1 = -7;
+                    if (q1 > 7) q1 = 7;
+                    if (q1 < -7) q1 = -7;
 
                     dst[j/2] = (tn_u8)(((q1 + 8) << 4) | (q0 + 8));
                 }
@@ -283,7 +327,8 @@ void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
                     tn_u32 bits0 = (tn_u32)row[j] << 16;
                     float f0; memcpy(&f0, &bits0, sizeof(float));
                     int q0 = (int)(f0 * inv_scale_i4 + (f0 >= 0 ? 0.5f : -0.5f));
-                    if (q0 > 7) q0 = 7; if (q0 < -7) q0 = -7;
+                    if (q0 > 7) q0 = 7;
+                    if (q0 < -7) q0 = -7;
                     dst[j/2] = (tn_u8)(q0 + 8);
                 }
             }

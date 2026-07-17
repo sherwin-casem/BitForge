@@ -71,9 +71,12 @@ static void test_quantize_scalar_range(void) {
 
     float scale = quantize_row_to_i8(x, q, n);
 
+    /* q[i] > 127 is impossible for int8_t (its own max value) — only the
+     * -128 edge case (excluded from the symmetric [-127,127] quant range)
+     * needs checking. */
     int all_in_range = 1;
     for (int i = 0; i < n; i++) {
-        if (q[i] < -127 || q[i] > 127) { all_in_range = 0; break; }
+        if (q[i] < -127) { all_in_range = 0; break; }
     }
     TEST_ASSERT(all_in_range, "quantize_scalar: all outputs in [-127, 127]");
     TEST_ASSERT(scale >= 0.0f, "quantize_scalar: scale non-negative");

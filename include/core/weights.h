@@ -12,6 +12,7 @@
 #define WEIGHT_TYPE_F32  0   /* F32 heap or mmap — existing fallback path */
 #define WEIGHT_TYPE_F16  1   /* F16 mmap zero-copy — 2× bandwidth vs F32  */
 #define WEIGHT_TYPE_Q4K  3   /* Q4_K mmap zero-copy — fused matmul kernel  */
+#define WEIGHT_TYPE_Q2_0 4   /* Q2_0 mmap zero-copy — fused matmul kernel (Qwen3.5/3.6 ternary) */
 
 typedef struct {
     /* Token embedding table: vocab_size * dim stored as bfloat16 (tn_u16).
@@ -158,6 +159,44 @@ typedef struct {
     int    *shared_w3_type_per_layer;  /* per-layer GGUF type for up   proj */
 
     int      moe_alloc_layers;         /* number of layers allocated for MoE arrays */
+
+    /*
+     * Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention weights (see
+     * MoEConfig.has_linear_attn). All NULL/false for every other model.
+     *
+     * Full-attention layers (q35_layer_is_full_attn() true) reuse the
+     * existing wq/wk/wv/wo fields above (same semantic role: Q/K/V/output
+     * projections — wq holds the combined Q+gate projection, width
+     * 2*n_head*attn_head_dim) plus the two per-head RMSNorm weights below.
+     * Dense FFN (w1/w2/w3) and both RMSNorms (rms_att_weight/rms_ffn_weight)
+     * are shared by both layer types — Qwen3.5's FFN is plain SwiGLU.
+     *
+     * Linear-attention (Gated DeltaNet) layers use q35_ssm_* instead;
+     * wq/wk/wv/wo stay NULL for those layers (same NULL-for-inapplicable-
+     * layer-type convention already used by MLA's wq/wk/wv vs mla_wq).
+     */
+    float **q35_attn_q_norm;   /* [n_layers] full-attn: RMSNorm weight, len=attn_head_dim */
+    float **q35_attn_k_norm;   /* [n_layers] full-attn: RMSNorm weight, len=attn_head_dim */
+
+    tn_i8 **q35_ssm_qkv;       /* [n_layers] linear-attn: combined q+k+v proj (pre-conv) */
+    tn_i8 **q35_ssm_gate;      /* [n_layers] linear-attn: z output-gate proj */
+    float **q35_ssm_conv1d;    /* [n_layers] linear-attn: depthwise causal conv kernel, F32,
+                                   [conv_kernel][key_dim*2+value_dim] */
+    float **q35_ssm_dt_bias;   /* [n_layers] linear-attn: dt bias, F32, [ssm_time_step_rank] */
+    float **q35_ssm_a;         /* [n_layers] linear-attn: per-head decay param, F32,
+                                   [ssm_time_step_rank] */
+    tn_i8 **q35_ssm_alpha;     /* [n_layers] linear-attn: alpha (dt) proj, dim -> ssm_time_step_rank */
+    tn_i8 **q35_ssm_beta;      /* [n_layers] linear-attn: beta (write-strength) proj, same shape */
+    float **q35_ssm_norm;      /* [n_layers] linear-attn: gated RMSNorm weight, F32,
+                                   [ssm_state_size] (== head_v_dim) */
+    tn_i8 **q35_ssm_out;       /* [n_layers] linear-attn: output proj, ssm_inner_size -> dim */
+
+    /* Zero-copy Q2_0 embedding / LM-head tables (used instead of embd_f32 /
+     * token_embedding_table / wcls when q35_is_q2_0_model is set — Q2_0 is
+     * too large to dequantize upfront: ~5 GB each for a 27B-class model). */
+    bool        q35_is_q2_0_model;
+    const void *q35_token_embd_raw;
+    const void *q35_output_raw;
 } TransformerWeights;
 
 /**

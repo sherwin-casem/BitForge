@@ -1,7 +1,233 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-07-16.
+> Read at session start. Last updated: 2026-07-17.
+
+### 2026-07-17 — Commit-bisected the 2.74 tok/s question instead of resting on a diff-based argument
+- Decision: user asked for direct proof rather than accepting the earlier `git diff`-based
+  reasoning — checked out the exact commit behind the 2.74 tok/s screenshot (`ce8e90d`) plus its
+  parent (`34d3ac9`, pre-VNNI-kernel) in isolated git worktrees, rebuilt each, and reran the
+  identical benchmark command, capturing real screenshots (not just log text) via the fixed
+  capture tool. `ce8e90d` measured 1.40 tok/s today (not 2.74); `34d3ac9` measured 0.12 tok/s,
+  matching the historical pre-VNNI baseline almost exactly — a built-in control proving the
+  methodology does detect real code-driven gaps when they exist, which makes the *absence* of a
+  gap between `ce8e90d` and current HEAD meaningful rather than a failure to look hard enough.
+  Full evidence and screenshot paths in `mistakes.md`.
+- Status: ACCEPTED — this closes the "is it code or host" question definitively for this benchmark.
+
+### 2026-07-17 — Investigated why `auto` measured 1.19-1.24 tok/s vs the README's earlier 2.74 tok/s, instead of assuming noise
+- Decision: user asked directly why the post-fix `auto` number was so much lower than the earlier
+  benchmark's 2.74 tok/s for the identical default configuration. Ruled out the classifier fix as
+  the cause via a real `git diff` (the default path is functionally unchanged), then got a live
+  data point by re-running the exact original command rather than reusing old numbers or asserting
+  "hardware noise" again. Found the re-run stalling for 5-10+ minutes at file-open and runtime-prep
+  steps that historically take seconds, root-caused to first-touch-of-fresh-memory stalls (mmap
+  populate, calloc zeroing) consistent with the underlying host being memory-pressured by other
+  tenants — invisible to this guest's own memory/vmstat readings. Full evidence chain in
+  `mistakes.md`. Confirmed final number: 1.24 tok/s, consistent with the classifier sweep's
+  `auto` = 1.19 tok/s from the same session.
+- Consequence: absolute tok/s numbers from this host are not comparable across separate sessions,
+  only within a single, back-to-back sweep. Added this caveat to the README's benchmark section.
+- Status: ACCEPTED.
+
+### 2026-07-17 — Actually fixed the classifier no-op (materialization), not just warned about it
+- Decision: the prior entry below (2026-07-16) fixed the classifier no-op bug with an explicit
+  runtime warning, judging full per-format materialization too large a change to take on
+  unprompted. User rejected that as insufficient ("Fix the no-op... No shortcuts, no honest
+  explanations, no fooling around") and asked for the real fix. Implemented it: Q2_0-native models
+  now materialize a BF16/INT8/INT4 classifier copy (dequantize Q2_0 → F32 → round to BF16 → reuse
+  the existing `weights_build_classifier_quant()` for INT8/INT4), but **only when the user
+  explicitly passes `--classifier`** (new `classifier_explicit` flag on `TnHardwareProfile`) — the
+  default zero-copy path is untouched, so the multi-GB memory cost stays fully opt-in. Full detail
+  in `mistakes.md`.
+- Verified with real, differentiated numbers (strictly sequential, freshly recalibrated, idle host,
+  4 threads): auto (zero-copy default) = 1.19 tok/s, bf16 = 1.13, int8 = 2.60, int4 = 2.62 tok/s.
+  The fix is confirmed working — three formats now take three different code paths and produce
+  three different results. Unexpected result: INT8/INT4 are ~2.2x faster than the zero-copy
+  default despite reading more bytes, because the general VNNI int8/int4 kernel is more
+  compute-efficient per element here than the specialized Q2_0 kernel — recorded in mistakes.md
+  since it contradicts the naive "smaller format = faster" assumption.
+- Verification: full gcc + clang release/test/debug, plus a from-scratch ASan/UBSan run with
+  `$(LIB_OBJS)` genuinely instrumented (re-confirmed for this round too — the first attempt at this
+  re-verification silently reused stale non-instrumented release objects via `make test` alone,
+  caught by grepping the build log for the sanitizer flags on the changed files before trusting the
+  green result) — all green, zero warnings, zero failures.
+- Status: ACCEPTED.
+
+### 2026-07-16 — Diagnosed the classifier BF16≈INT4 anomaly properly instead of accepting "noise" as the answer
+- Decision: user rejected an initial "hardware measurement noise" explanation for why
+  BF16/INT8/INT4 classifier runs measured identical tok/s, correctly pointing out that noise alone
+  doesn't explain an exact match this precise. Traced it to a real bug: Q2_0-native models
+  (Ternary-Bonsai-27B included) never actually read `--classifier` in `forward.c`'s dispatch — the
+  flag is accepted, echoed, and even fed into a fake performance-ceiling calculation, but the
+  actual LM-head matmul always uses the same zero-copy raw Q2_0 path regardless. Fixed (at the
+  time) by adding an explicit runtime warning rather than implementing full per-format
+  materialization — superseded by the real fix above, this warning-only version was not the final
+  state. Separately confirmed the underlying virtualized host was *also* recycled mid-session
+  (hardware genuinely changed between the thread-sweep and classifier-sweep measurements) — both
+  facts are true, but the no-op dispatch bug is the actual reason the three classifier configs were
+  indistinguishable, not the noise.
+- Also changed the startup banner to match llama.cpp's actual (unconditional-in-a-TTY) behavior,
+  after being asked why llama.cpp shows its banner in one-shot mode and pz didn't — read
+  llama.cpp's source to confirm it has no interactive-vs-scripted distinction at all, then verified
+  both the old and new pz behavior empirically via real pty captures rather than trusting the
+  source read alone.
+- Fixed a batch of pre-existing compiler warnings across `src/` and `tests/` on explicit reminder
+  of the bug-fix policy (see mistakes.md for the full list) — all were genuinely pre-existing and
+  unrelated to this session's main work, but "pre-existing" was correctly rejected as an excuse to
+  leave them.
+- Verification: full gcc + clang release/test/debug, plus a from-scratch ASan/UBSan run with
+  `$(LIB_OBJS)` genuinely instrumented — all green, zero warnings, zero failures.
+- Status: SUPERSEDED by the 2026-07-17 entry above.
+
+### 2026-07-17 — Engineering highlights worth crediting explicitly (fact-checked before writing)
+- Decision: user asked to record credit for specific technical work in this project's own docs.
+  Declined to spawn research into social-media/psychological-persuasion framing for this (out of
+  scope, and in direct conflict with this repo's own docs rule to stay factual and concise —
+  `.claude/rules/docs.md`); instead verified each claim against the actual code/history before
+  writing anything, and only recorded what checked out:
+  1. **Q2_0/VNNI kernel connection (~29x speedup)**: Ternary-Bonsai-27B's GGUF tensors were tagged
+     with a type ID mainline tooling reads as one format; computing real bytes-per-tensor against
+     the file revealed PrismML's actual (non-canonical) packing, which turned out to be bit-for-bit
+     compatible with this project's own AVX-512 VNNI ternary "w_enc bias trick" kernel. Connecting
+     the two took Q2_0 matmul from ~1% of this host's DRAM bandwidth ceiling to ~29x faster. Fully
+     documented in `mistakes.md` (2026-07-16, "Q2_0 matmul was 1% of this host's own bandwidth
+     ceiling").
+  2. **Activations quantized once per matmul call, not once per thread**: `parallel_matmul.c`'s
+     dispatcher pre-quantizes the activation row a single time and passes the result to all worker
+     threads (`parallel_matmul.c:145`), instead of each of T threads redundantly re-quantizing the
+     same row — a real, verified efficiency choice, not new this session but genuine and worth
+     citing when describing the kernel design.
+  3. **Runtime ISA dispatch avoids cliff-edge failures on hardware lacking an extension**: the real
+     fallback ladder is AVX-512VNNI → AVX-512 → AVX2 → scalar (ARM: dotprod → NEON), verified in
+     `simd_dispatch.c` — not "SSE" as first described to me; corrected before writing it anywhere.
+     The AVX-512VBMI CPUID-lying fix (`mistakes.md`, 2026-07-16) is part of this same dispatch
+     discipline: verify a feature actually executes before trusting CPUID's claim of it.
+  4. **Single binary, dual weight-format support** (native packed-ternary + dense/quantized GGUF,
+     no per-model rebuild) is a real, inspectable property of this codebase's architecture — worth
+     stating as a differentiator in the benchmark writeup, scoped as an existing engine capability
+     rather than something delivered in this session.
+  - **Correction (2026-07-17), on user pushback:** originally declined to credit "our VNNI ternary
+    kernel is tighter than bitnet.cpp's own reference implementation," reasoning no benchmark
+    against bitnet.cpp existed *in this specific session*. User correctly pushed back — the bar for
+    "is this true and ours" isn't "did I personally re-run it this chat," it's "does real, verified
+    evidence exist." It does: the 2026-06-21 decision-log entry above documents a controlled,
+    same-SIMD/same-thread/same-precision measurement (methodology in `BENCHMARK_REPORT.md`
+    Addendum AP) showing Project Zero beats Microsoft's own `bitnet.cpp` on BitNet b1.58 by
+    +19-37% at every thread count, BF16 head-to-head — a real, apples-to-apples result, not the
+    broader uncontrolled "up to 5.4x" headline number (which mixes each engine's own best SIMD
+    pick and is a different, less rigorous claim). That controlled +19-37% number is the accurate,
+    defensible form of claim #1 and is now credited on that basis.
+- Status: ACCEPTED — see README.md's benchmark section for where this is surfaced publicly.
+
+### 2026-07-16 — Fixed a real SIGILL crash found while benchmarking classifier precision (bf16/int8/int4)
+- Decision: while collecting a `--classifier` throughput sweep for benchmark documentation, every
+  run crashed with `SIGILL` on this host. Root-caused (via `gdb`) to AVX-512VBMI code executing
+  despite this specific virtualized (Firecracker) host's CPUID advertising VBMI support it cannot
+  actually retire. Fixed rather than working around it (e.g. by just disabling calibration or the
+  classifier sweep), per the "any bug found gets fixed in the same pass" policy — this crash would
+  hit any user on similarly-virtualized hardware on their very first run, not just this benchmark.
+  Full technical detail in `docs/ai/mistakes.md`.
+- Fix shape: added a one-time, execution-verified runtime check for AVX-512VBMI
+  (`sigaction`+`sigsetjmp` self-test in `cpu_features.c`) instead of trusting CPUID alone, and
+  converted the two consumer call sites (`bitunpack2_vnni.h`'s Q2_0/ternary unpack,
+  `parallel_matmul.c`'s INT4 classifier unpack) from compile-time-only `#if TN_HAS_AVX512VBMI`
+  branching to compiling both the VBMI and non-VBMI paths always, dispatching via the verified
+  runtime flag.
+- Status: ACCEPTED. Verified end to end: cleared the calibration cache and re-ran
+  `--classifier int4` (the exact crashing scenario) — calibration now completes both phases and
+  generation proceeds normally.
+
+### 2026-07-16 — Reversed the "flag, don't fix" call on both remaining items after user pushback
+- Decision: the prior entry below deferred 2 items (Q2_0 batch/MoE VNNI path, byte-level BPE
+  detokenizer) as "flagged instead of fixed." User directly challenged that ("Why did u not fix
+  the remaining 2?"). Re-examined both from scratch rather than re-justifying the original
+  deferral, and implemented both — see `docs/ai/mistakes.md`'s top entry for full technical
+  detail. Both original blockers turned out to be weaker than assessed: the batch path had *no
+  real caller at all* (not just "off the hot path"), and the detokenizer's assumed need for
+  cross-call state didn't actually exist (byte-level concatenation is inherently stateless).
+- While re-verifying under genuinely sanitizer-instrumented library objects (a gap in this
+  session's own prior verification — `make test` alone does not actually instrument
+  `$(LIB_OBJS)`, only the test files; see mistakes.md), found and fixed 2 more independent,
+  pre-existing memory-safety bugs: a heap-buffer-overflow in the AVX-512BW LUT ternary kernel
+  (`ternary_matmul_lut_avx512bw.c`, an unnecessary 64-byte SIMD load where only 32 bytes were ever
+  used) and a 4x buffer under-allocation in `test_moe.c`'s test harness (`moe_gate_w` sized for
+  `tn_i8` when the router reads it as `float`). Both fixed per the "any bug found gets fixed in
+  the same pass" policy.
+- Verification: `make release`, `make test` (release-mode), a full ASan+UBSan test run with
+  `$(LIB_OBJS)` and all test binaries freshly compiled under sanitizer flags in one invocation
+  (not the ordering-dependent `make debug` step, which is a no-op here — see mistakes.md), and
+  `make debug` (main engine binary) from a clean tree — all green, for both gcc and clang.
+- Status: ACCEPTED. Both items closed; no known open shortcomings remain from the Qwen 3.6
+  benchmark work as of this entry.
+
+### 2026-07-16 — Closed the Q2_0 perf gap and the remaining chat-template gaps on explicit request
+- Decision: given a direct follow-up request to "fix all shortcomings" from the earlier Qwen 3.6
+  benchmark (this same day), implemented the deferred Q2_0 VNNI kernel and the contained
+  chat-template gaps (`|items` filter, tuple-unpacking for-loops, `loop.previtem`/`nextitem`,
+  method calls on literals) rather than leaving them as documented-but-unaddressed. Left two
+  items deliberately out of scope, each re-flagged explicitly rather than silently fixed or
+  silently dropped:
+  1. The Q2_0 *batch* matmul path (`parallel_matmul_q2_0_batch`, used for MoE per-expert
+     routing) still uses the portable decode+FMA kernel. Ternary-Bonsai-27B is dense (MoE
+     disabled), so this was never on the measured hot path this session, and extending the same
+     VNNI trick to it wasn't verified against a real MoE+Q2_0 model.
+  2. The byte-level-BPE detokenizer's incomplete GPT-2 byte-unicode reverse table (mojibake on
+     non-ASCII output) — a real, pre-existing, unrelated-to-Qwen-3.6 bug found via a screenshot
+     review, but a stateful rewrite of a function on every model's hot decode path, with zero
+     existing non-ASCII test coverage to verify against; see mistakes.md for the full reasoning.
+- Benchmark results (before -> after the VNNI kernel), same prompt, same host, 4 threads,
+  greedy decoding: project-zero generation throughput went from ~0.11 tok/s to **~3.24 tok/s**
+  (~29x) on the real model. Verified as a genuine speedup and not a correctness regression by
+  comparing the exact sampled-token-ID sequence at matching generation steps before and after —
+  identical for every step checked (both engines' greedy argmax agreed token-for-token), and a
+  full 256-token completion was re-captured end-to-end producing the same coherent
+  reasoning-then-answer response as before the optimization.
+- Correctness verification method for the new VNNI kernel specifically: a dedicated unit test
+  (`tests/test_q2_0_matmul.c`) comparing it against an independent reference decode path
+  (`gguf_dequant_q2_0`, unrelated to either matmul kernel) across single-block/multi-block/
+  real-model-dimension/non-block-aligned/all-zero-activation cases, run under full ASan+UBSan
+  instrumentation of every object involved (not just the test file — see mistakes.md's note on
+  why the first version of this test had false failures and how that was root-caused with a
+  one-hot activation probe before concluding the kernel itself was correct).
+- Status: ACCEPTED. gcc+clang release/test/debug all green (including the 2 new test binaries);
+  real-model output re-verified coherent and consistent with the pre-optimization baseline.
+
+### 2026-07-16 — Qwen 3.5/3.6 hybrid-attention support: architecture, benchmark engine, and scope
+- Decision: implement full Qwen 3.5/3.6 (Gated DeltaNet + Gated-Attention hybrid) support,
+  targeting `prism-ml/Ternary-Bonsai-27B-gguf` specifically, following the existing `has_mla`
+  precedent (extend shared `MoEConfig`/`TransformerWeights`/`RunState` structs with
+  `q35_*`/`has_linear_attn`-gated fields rather than new per-arch types).
+- New tensor format: added `GGML_TYPE_Q2_0`/`gguf_dequant_q2_0`/`parallel_matmul_q2_0` for
+  PrismML's ternary Q2_0 packing. Confirmed empirically (bytes-per-tensor computed from the real
+  downloaded file, cross-checked against llama.cpp discussion #22019) that this specific file uses
+  the **group-128** variant (34B/128 elems, 2.125 bpw), not mainline ggml's canonical **group-64**
+  `block_q2_0` (18B/64 elems) — both share GGUF type ID 42, so the group size had to be derived
+  from the file, not the type. Zero-copy: token embedding and LM head stay Q2_0-raw (dequantizing
+  either fully to F32 would need ~5GB), dequanted per-row/per-token on demand.
+- Benchmark engine choice: built **PrismML-Eng/llama.cpp** (the `prism` branch), not mainline
+  ggml-org/llama.cpp, specifically because mainline's CPU/Metal Q2_0 kernel only covers the
+  group-64 packing and cannot load this project's actual downloaded group-128 file without a
+  second multi-GB download of a different GGUF variant. The fork's `QK2_0` constant (128) was
+  checked in `ggml-common.h` before building to confirm compatibility with the exact file already
+  on disk, letting both engines benchmark the identical `.gguf`.
+- Full-model verification method: rather than trusting code review alone against the reference
+  source (`src/models/qwen35.cpp`/`delta-net-base.cpp` in the same clone), correctness was proven
+  by running the identical prompt through both engines and requiring matching, coherent output —
+  this is what actually surfaced the final remaining bug (a transposed conv1d kernel read; see
+  `mistakes.md` 2026-07-16 item 6) that line-by-line math comparison against the reference source
+  had missed. Tokenization/chat-template rendering were separately confirmed byte-identical via
+  `llama-tokenize -f <rendered_prompt.txt> --ids` against project-zero's own `--verbose` dump.
+- Scope boundary: Q2_0 matmul performance (currently scalar-decode-to-stack-buffer +
+  AVX2 FMA per 128-element block) was explicitly left unoptimized — the task was correctness +
+  running the model + benchmarking existing behavior, not a performance pass. This shows up
+  directly in the benchmark: project-zero's Q2_0 kernel is markedly slower than the reference
+  engine's (see the benchmark artifact for numbers on this specific 4-core host). Flagged as a
+  known, deliberately out-of-scope follow-up rather than silently accepted.
+- Status: ACCEPTED. Full architecture verified end-to-end against the real 27B model: gcc+clang
+  release/test/debug all green (incl. new `tests/test_chat_template.c`, 18 cases), coherent
+  reasoning output produced and cross-checked token-for-token against the reference engine's
+  continuation of the same prompt.
 
 ### 2026-07-16 — Process decision: bugs get fixed on discovery, not just logged
 - Decision: any bug found during a task — including pre-existing ones unrelated to what's being

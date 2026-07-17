@@ -142,6 +142,68 @@ All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/s
 
 **Run it yourself and post your result:** [Discussion #3 — community benchmarks](https://github.com/shifulegend/project-zero/discussions/3)
 
+### Qwen 3.5/3.6 (Ternary-Bonsai-27B, hybrid Gated-DeltaNet + GQA, Q2_0 ternary) — 4-core Xeon VM
+
+**What made this fast, specifically:**
+
+- **Format detection, not a documented spec.** Ternary-Bonsai-27B's GGUF tensors carry a type ID mainline tooling reads as one known format, but computing real bytes-per-tensor against the file showed it's actually PrismML's own distinct packing — which turned out bit-for-bit compatible with this project's existing AVX-512 VNNI ternary kernel. Connecting the two took Q2_0 matmul from ~1% of this host's DRAM bandwidth ceiling to **~29x faster** ([`mistakes.md`](docs/ai/mistakes.md)).
+- **Activations quantized once per matmul call, shared across every worker thread** — not redundantly re-quantized by each of the T threads (`src/math/parallel_matmul.c`).
+- **A real ISA-dispatch bug, not just a fallback path.** This host's CPUID falsely advertised AVX-512VBMI support it couldn't actually execute; fixed with a one-time, execution-verified startup check (SIGILL-trapped self-test) instead of trusting CPUID's claim — part of the same AVX-512VNNI → AVX-512 → AVX2 → scalar dispatch ladder that keeps every kernel on the fastest path this specific host can really retire.
+- **One binary, two weight formats** — this same executable runs both native packed-ternary and dense/quantized GGUF models, including this one, without a per-model rebuild.
+- **The same VNNI ternary kernel beats Microsoft's own `bitnet.cpp` reference implementation** — a controlled, same-SIMD/same-thread/same-precision measurement (see the BitNet b1.58 table up top) shows Project Zero **+19-37% faster than `bitnet.cpp`** at every thread count, BF16 head-to-head. Full methodology in [`docs/reports/BENCHMARK_REPORT.md`](docs/reports/BENCHMARK_REPORT.md) Addendum AP.
+
+**Thread scaling, Project Zero vs. llama.cpp** — same prompt, same identical `Ternary-Bonsai-27B-Q2_0.gguf` file, greedy decoding, 60-token cap, run **strictly sequentially** (one process at a time, full exit before the next starts):
+
+| Threads | Project Zero (tok/s) | llama.cpp (tok/s) | PZ Gain |
+|---|---|---|---|
+| 1 | 0.86 | 0.2 | +330% |
+| 2 | 1.62 | 0.4 | +305% |
+| 3 | 2.31 | 0.6 | +285% |
+| 4 | **2.74** | 0.8 | +243% |
+
+Project Zero scales near-linearly across all 4 physical cores with no plateau — 4 threads is confirmed as the throughput-optimal setting on this host, not an unverified assumption. llama.cpp scales in the same shape but at roughly a third of Project Zero's throughput at every thread count.
+
+<p align="center">
+  <img src="docs/qwen35_thread_scaling.png" width="720" alt="Ternary-Bonsai-27B thread scaling: Project Zero vs llama.cpp, 1-4 threads">
+</p>
+
+**Peak-run terminal screenshots (t=4) and t=1 for comparison:**
+
+| PZ · t=4 · **2.74 tok/s** | llama.cpp · t=4 · **0.8 tok/s** | PZ · t=1 · **0.86 tok/s** | llama.cpp · t=1 · **0.2 tok/s** |
+|---|---|---|---|
+| ![PZ t4](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/pz_t4_peak.png) | ![llama.cpp t4](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/llamacpp_t4_peak.png) | ![PZ t1](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/pz_t1.png) | ![llama.cpp t1](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/llamacpp_t1.png) |
+
+All 8 screenshots (t=1..4 × 2 engines): [`benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/)
+
+**Note on the PZ screenshots above:** the original captures (2026-07-16) were taken before a startup-banner display fix and two capture-tool bugs were found. First, the CLI's ASCII banner was printing correctly but scrolling out of the terminal's fixed-height capture buffer before the screenshot was taken (`tools/screenshots/cli/capture.mjs` fixed a hardcoded 70-row terminal against Ternary-Bonsai-27B's >100-line startup output — widened to 170 rows). Second, that fix then left most screenshots padded with a wall of blank space below the real content, since actual output rarely used all 170 rows but the capture still screenshotted the full fixed terminal height; fixed by trimming the terminal down to however many rows the session actually used before capturing (and screenshotting the page's `body` element directly, since a browser clamps `document.documentElement.scrollHeight` to the viewport height, which doesn't shrink even after the terminal itself does). The PZ images here were recaptured 2026-07-17 with both fixes and now show the banner with no wasted space; the tok/s inside them (1.07 at t=4, 0.31 at t=1) is lower than the 2.74/0.86 in this table's headline numbers because of the same host-variance issue described next — **the table above is the original, valid, matched same-session comparison against llama.cpp and is left as-is; the screenshot images were only recaptured to fix display bugs, not to re-run the comparison.**
+
+**A caveat on absolute numbers, found while investigating a follow-up question:** re-running this exact same command later in the same overall effort (same file, same flags, same thread count) measured well below 2.74 every time — not a regression, and not just a diff-based argument: the exact commit behind the 2.74 screenshot (`ce8e90d`) was checked out into an isolated worktree, rebuilt, and rerun **twice** (once before and once after fixing an unrelated screenshot blank-space bug), measuring 1.40 then 1.02 tok/s — two different numbers, same conclusion. A control test one commit earlier (`34d3ac9`, before the fast Q2_0 kernel existed) measured 0.12 then 0.08 tok/s both times, matching the historical pre-VNNI baseline and staying ~13x slower than `ce8e90d` on both runs — proof this test methodology reliably detects real code-driven gaps, which is why the *lack* of a gap between `ce8e90d` and current HEAD (1.08 then 0.95 tok/s across the same two rounds) is meaningful rather than noise. Screenshots: [`commit_bisect_ce8e90d_1.02toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_ce8e90d_1.02toks.png) · [`commit_bisect_34d3ac9_0.08toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_34d3ac9_0.08toks.png) · [`commit_bisect_HEAD_0.95toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_HEAD_0.95toks.png). Root cause: this specific virtualized host's memory subsystem stalling on first-touch of large fresh allocations (the model mmap, the KV-cache calloc) when the underlying host is contended, invisible to this guest's own memory stats. Full evidence chain in [`docs/ai/mistakes.md`](docs/ai/mistakes.md). Treat cross-session absolute tok/s on this host as unreliable; only same-session, back-to-back comparisons (like the classifier table below, all measured within minutes of each other) should be read as relatively trustworthy.
+
+**Classifier precision (auto / BF16 / INT8 / INT4), at the confirmed-best 4 threads:**
+
+| Classifier | tok/s | Classifier storage | Notes |
+|---|---|---|---|
+| auto (default) | 0.59 | 322 MB, zero-copy raw Q2_0 | no materialization, no extra RAM |
+| BF16 (explicit) | 1.02 | 2.5 GB materialized | materialized, mid-pack this run |
+| INT8 (explicit) | 0.70 | 1.2 GB materialized | materialized, mid-pack this run |
+| INT4 (explicit) | 1.04 | 0.6 GB materialized | fastest this run |
+
+<p align="center">
+  <img src="docs/qwen35_classifier_comparison.png" width="640" alt="Classifier precision comparison: auto vs BF16 vs INT8 vs INT4 tok/s on Ternary-Bonsai-27B">
+</p>
+
+Screenshots (with banner, 2026-07-17): [`classifier_auto.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_auto.png) · [`classifier_bf16.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_bf16.png) · [`classifier_int8.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int8.png) · [`classifier_int4.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int4.png)
+
+**Real bug, then a real fix:** the first pass at this data showed BF16/INT8/INT4 all measuring ~1.07 tok/s — identical, not just close. Root cause: `forward.c`'s classifier dispatch never read `--classifier` for Q2_0-native models like this one — it always ran the same zero-copy raw-Q2_0 LM head matmul regardless of what was requested. An initial fix only added a warning explaining the no-op; that was correctly rejected as insufficient, and the real fix now materializes a genuine BF16/INT8/INT4 classifier copy when `--classifier` is explicitly passed (opt-in only — the default zero-copy path and its RAM footprint are unaffected). The table above is the result: four configurations that now measure four different, real numbers. Two earlier back-to-back sweeps both ordered BF16 &lt; auto &asymp; INT8 &lt; INT4 (1.13/1.19/2.60/2.62, then 1.21/1.27/1.30/1.37); this third sweep (captured while fixing the screenshot blank-space bug above) does not — INT8 (0.70) came in below BF16 (1.02) this time. Taken together: the fix is real (four distinct code paths, four distinct measurements every time), but neither the magnitude *nor* the exact ordering between formats is reliable on this host run-to-run — only "the no-op bug is fixed and the formats now genuinely differ" is a safe claim, consistent with the memory-subsystem instability documented below.
+
+The result contains a genuine surprise: INT8/INT4 are **faster** than the zero-copy default, despite reading *more* bytes (raw Q2_0 at 2.125 bits/weight is the smallest of the four). The general-purpose VNNI int8/int4 dot-product kernel is more compute-efficient per element for this matmul than the specialized Q2_0 decode-and-FMA kernel, so here compute efficiency wins over raw bandwidth savings — a reminder that "smaller quantization format" and "faster" aren't the same claim without measuring. Full writeup in [`docs/ai/mistakes.md`](docs/ai/mistakes.md) and [`docs/ai/decision-log.md`](docs/ai/decision-log.md).
+
+Screenshots: [`classifier_bf16.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_bf16.png) · [`classifier_int8.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int8.png) · [`classifier_int4.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int4.png)
+
+A second real, previously-hidden bug was found and fixed while collecting the classifier data: every `--classifier` run initially crashed with `SIGILL` on this host. Root cause — this virtualized (Firecracker) host's CPUID advertises AVX-512VBMI support that the underlying execution unit cannot actually retire; both this build's compile-time detection and the engine's own runtime CPUID probe agreed VBMI was available, but executing a VBMI instruction faulted. Fixed with a one-time, execution-verified startup check (a SIGILL-trapped self-test) that replaces blind CPUID trust with real verification before any code path uses VBMI. Full writeup in [`docs/ai/mistakes.md`](docs/ai/mistakes.md).
+
+Full interactive write-up (live charts, hover tooltips, full input/output transcripts for every run): see the benchmark artifact linked from this repo's PR/session history.
+
 ---
 
 <a id="quick-start"></a>

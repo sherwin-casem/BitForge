@@ -205,15 +205,23 @@ static inline void acc16_to_acc32(__m512i acc16,
 static inline __m512i lookup_and_acc(const int8_t *pw,
                                       const __m512i T[4],
                                       __m512i acc16) {
-    /* Load 32 packed weight bytes (values in [-121..+121]) */
-    __m512i v = _mm512_loadu_si512((const __m512i*)pw);
+    /* Load exactly the 32 packed weight bytes this column block needs
+     * (values in [-121..+121]). A 512-bit load here would read 32 bytes
+     * past this block's data — only the low 32 bytes were ever used below
+     * (the upper half was extracted away, never referenced) — corrupting
+     * nothing for interior blocks (it just reads the next group's row) but
+     * heap-buffer-overflowing on the last column block of the last group,
+     * since P is sized exactly (K/5)*N bytes with no trailing padding.
+     * Found via ASan on a real-shape test case (K5=8, N=64, P=512B exactly)
+     * after this session started building+testing with LIB_OBJS actually
+     * instrumented — see docs/ai/mistakes.md. */
+    __m256i v = _mm256_loadu_si256((const __m256i*)pw);
 
     /* abs(v) as int8, and sign mask (bit per byte, set where v < 0) */
-    __m512i abs_v    = _mm512_abs_epi8(v);
-    __mmask64 neg64  = _mm512_movepi8_mask(v);
+    __m256i abs_lo8 = _mm256_abs_epi8(v);
+    __mmask32 neg32 = _mm256_movepi8_mask(v);
 
-    /* Widen low 32 bytes of abs_v (int8) to 32 x int16 */
-    __m256i abs_lo8 = _mm512_extracti32x8_epi32(abs_v, 0);
+    /* Widen the 32 bytes of abs_v (int8) to 32 x int16 */
     __m512i idx16   = _mm512_cvtepu8_epi16(abs_lo8);  /* 0..121 */
 
     /*
@@ -239,7 +247,6 @@ static inline __m512i lookup_and_acc(const int8_t *pw,
     __m512i rr = _mm512_mask_blend_epi16(hi_mask, r01, r23);
 
     /* Negate lanes where original weight was negative */
-    __mmask32 neg32 = (__mmask32)(neg64 & 0xFFFFFFFFULL);
     rr = _mm512_mask_sub_epi16(rr, neg32, _mm512_setzero_si512(), rr);
 
     return _mm512_add_epi16(acc16, rr);
