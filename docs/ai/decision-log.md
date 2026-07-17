@@ -1,7 +1,31 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-07-16.
+> Read at session start. Last updated: 2026-07-17.
+
+### 2026-07-17 — Actually fixed the classifier no-op (materialization), not just warned about it
+- Decision: the prior entry below (2026-07-16) fixed the classifier no-op bug with an explicit
+  runtime warning, judging full per-format materialization too large a change to take on
+  unprompted. User rejected that as insufficient ("Fix the no-op... No shortcuts, no honest
+  explanations, no fooling around") and asked for the real fix. Implemented it: Q2_0-native models
+  now materialize a BF16/INT8/INT4 classifier copy (dequantize Q2_0 → F32 → round to BF16 → reuse
+  the existing `weights_build_classifier_quant()` for INT8/INT4), but **only when the user
+  explicitly passes `--classifier`** (new `classifier_explicit` flag on `TnHardwareProfile`) — the
+  default zero-copy path is untouched, so the multi-GB memory cost stays fully opt-in. Full detail
+  in `mistakes.md`.
+- Verified with real, differentiated numbers (strictly sequential, freshly recalibrated, idle host,
+  4 threads): auto (zero-copy default) = 1.19 tok/s, bf16 = 1.13, int8 = 2.60, int4 = 2.62 tok/s.
+  The fix is confirmed working — three formats now take three different code paths and produce
+  three different results. Unexpected result: INT8/INT4 are ~2.2x faster than the zero-copy
+  default despite reading more bytes, because the general VNNI int8/int4 kernel is more
+  compute-efficient per element here than the specialized Q2_0 kernel — recorded in mistakes.md
+  since it contradicts the naive "smaller format = faster" assumption.
+- Verification: full gcc + clang release/test/debug, plus a from-scratch ASan/UBSan run with
+  `$(LIB_OBJS)` genuinely instrumented (re-confirmed for this round too — the first attempt at this
+  re-verification silently reused stale non-instrumented release objects via `make test` alone,
+  caught by grepping the build log for the sanitizer flags on the changed files before trusting the
+  green result) — all green, zero warnings, zero failures.
+- Status: ACCEPTED.
 
 ### 2026-07-16 — Diagnosed the classifier BF16≈INT4 anomaly properly instead of accepting "noise" as the answer
 - Decision: user rejected an initial "hardware measurement noise" explanation for why
@@ -9,13 +33,13 @@
   doesn't explain an exact match this precise. Traced it to a real bug: Q2_0-native models
   (Ternary-Bonsai-27B included) never actually read `--classifier` in `forward.c`'s dispatch — the
   flag is accepted, echoed, and even fed into a fake performance-ceiling calculation, but the
-  actual LM-head matmul always uses the same zero-copy raw Q2_0 path regardless. Fixed by adding an
-  explicit runtime warning rather than implementing full per-format materialization (a genuinely
-  large ~5GB-memory-cost architectural change, already documented as a deliberate tradeoff in
-  `gguf_loader.c` — flagged explicitly, not silently deferred). Separately confirmed the
-  underlying virtualized host was *also* recycled mid-session (hardware genuinely changed between
-  the thread-sweep and classifier-sweep measurements) — both facts are true, but the no-op dispatch
-  bug is the actual reason the three classifier configs were indistinguishable, not the noise.
+  actual LM-head matmul always uses the same zero-copy raw Q2_0 path regardless. Fixed (at the
+  time) by adding an explicit runtime warning rather than implementing full per-format
+  materialization — superseded by the real fix above, this warning-only version was not the final
+  state. Separately confirmed the underlying virtualized host was *also* recycled mid-session
+  (hardware genuinely changed between the thread-sweep and classifier-sweep measurements) — both
+  facts are true, but the no-op dispatch bug is the actual reason the three classifier configs were
+  indistinguishable, not the noise.
 - Also changed the startup banner to match llama.cpp's actual (unconditional-in-a-TTY) behavior,
   after being asked why llama.cpp shows its banner in one-shot mode and pz didn't — read
   llama.cpp's source to confirm it has no interactive-vs-scripted distinction at all, then verified
@@ -27,7 +51,40 @@
   leave them.
 - Verification: full gcc + clang release/test/debug, plus a from-scratch ASan/UBSan run with
   `$(LIB_OBJS)` genuinely instrumented — all green, zero warnings, zero failures.
-- Status: ACCEPTED.
+- Status: SUPERSEDED by the 2026-07-17 entry above.
+
+### 2026-07-17 — Engineering highlights worth crediting explicitly (fact-checked before writing)
+- Decision: user asked to record credit for specific technical work in this project's own docs.
+  Declined to spawn research into social-media/psychological-persuasion framing for this (out of
+  scope, and in direct conflict with this repo's own docs rule to stay factual and concise —
+  `.claude/rules/docs.md`); instead verified each claim against the actual code/history before
+  writing anything, and only recorded what checked out:
+  1. **Q2_0/VNNI kernel connection (~29x speedup)**: Ternary-Bonsai-27B's GGUF tensors were tagged
+     with a type ID mainline tooling reads as one format; computing real bytes-per-tensor against
+     the file revealed PrismML's actual (non-canonical) packing, which turned out to be bit-for-bit
+     compatible with this project's own AVX-512 VNNI ternary "w_enc bias trick" kernel. Connecting
+     the two took Q2_0 matmul from ~1% of this host's DRAM bandwidth ceiling to ~29x faster. Fully
+     documented in `mistakes.md` (2026-07-16, "Q2_0 matmul was 1% of this host's own bandwidth
+     ceiling").
+  2. **Activations quantized once per matmul call, not once per thread**: `parallel_matmul.c`'s
+     dispatcher pre-quantizes the activation row a single time and passes the result to all worker
+     threads (`parallel_matmul.c:145`), instead of each of T threads redundantly re-quantizing the
+     same row — a real, verified efficiency choice, not new this session but genuine and worth
+     citing when describing the kernel design.
+  3. **Runtime ISA dispatch avoids cliff-edge failures on hardware lacking an extension**: the real
+     fallback ladder is AVX-512VNNI → AVX-512 → AVX2 → scalar (ARM: dotprod → NEON), verified in
+     `simd_dispatch.c` — not "SSE" as first described to me; corrected before writing it anywhere.
+     The AVX-512VBMI CPUID-lying fix (`mistakes.md`, 2026-07-16) is part of this same dispatch
+     discipline: verify a feature actually executes before trusting CPUID's claim of it.
+  4. **Single binary, dual weight-format support** (native packed-ternary + dense/quantized GGUF,
+     no per-model rebuild) is a real, inspectable property of this codebase's architecture — worth
+     stating as a differentiator in the benchmark writeup, scoped as an existing engine capability
+     rather than something delivered in this session.
+  - Explicitly NOT recorded: a claim that this project's VNNI ternary kernel is "tighter than
+    bitnet.cpp's own reference implementation" — no benchmark comparing against bitnet.cpp exists
+    in this session (only against llama.cpp), so there is no evidence to back that specific claim.
+    Documenting real, checkable work is worth doing; asserting an unmeasured comparison is not.
+- Status: ACCEPTED — see README.md's benchmark section for where this is surfaced publicly.
 
 ### 2026-07-16 — Fixed a real SIGILL crash found while benchmarking classifier precision (bf16/int8/int4)
 - Decision: while collecting a `--classifier` throughput sweep for benchmark documentation, every

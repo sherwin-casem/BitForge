@@ -3,44 +3,59 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-16.
+> Last updated: 2026-07-17.
 
-### 2026-07-16 — `--classifier` silently no-ops on Q2_0-native models: the real reason BF16/INT8/INT4 measured identically
+### 2026-07-16 — `--classifier` silently no-op'd on Q2_0-native models: root-caused, then actually fixed (not just warned about)
 - Summary: a classifier-precision benchmark showed BF16, INT8, and INT4 all measuring ~1.07-1.09
   tok/s on Ternary-Bonsai-27B — identical within noise. My first explanation blamed hardware
-  measurement noise alone (this virtualized host's DRAM bandwidth reading did vary 9.9-12.3 GB/s
-  across the 3 runs). User pushback ("in the same hardware still does not make sense for bf16 and
-  int4 to be together") was right to reject that as sufficient — noise doesn't explain identical
-  results this precisely; it explains *some* variance, not the total absence of a signal from a
-  41%-smaller data footprint (1149→680 MB/token, computed correctly by the hardware profiler).
-- Root cause: `forward.c`'s classifier dispatch has two branches. `w->q35_is_q2_0_model` (true for
-  this model, per its GGUF loader's own comment about the ~5GB cost of materializing a separate
-  BF16/INT8/INT4 copy of a 248320×5120 vocab) takes an **unconditional** `parallel_matmul_q2_0(...)`
-  path using the raw Q2_0 output tensor — it never even reads `hp->classifier_fmt`. Only the
-  `else` branch (non-Q2_0 models) dispatches on classifier format. Meanwhile `main.c`'s classifier
-  selection code (`tn_hardware_profile_set_classifier`, before weights are even loaded) always
-  prints `"Classifier: %s (user-selected)"` and the hardware profile always computes a
-  Data/token/Ceiling implying the requested precision *will* apply — for Q2_0-native models, none
-  of that ever reaches the actual generation path. The three classifier runs weren't measuring
-  three different code paths at all; they ran the *exact same* code every time.
-- Correction: added an explicit `[warning] --classifier has no effect on this model: it is
-  Q2_0-native (zero-copy LM head), so the classifier precision you selected is not applied` printed
-  right after weights load, whenever `w.q35_is_q2_0_model && args.classifier_override >= 0`
-  (`src/cli/main.c`). Did not implement actual per-format Q2_0 classifier materialization — that's
-  the ~5GB-memory-cost architectural tradeoff already documented in `gguf_loader.c`, a genuinely
-  large change or none, not a quick contained fix; flagging it explicitly rather than either
-  silently leaving the misleading printout or unilaterally taking on a multi-GB memory-budget
-  decision.
-- Affected files: `src/cli/main.c` (the new warning).
-- Detection: user explicitly rejected an incomplete "noise floor" explanation and asked for the
-  hardware to be re-verified — that pushback is what led to actually reading forward.c's dispatch
-  instead of stopping at "the numbers are close enough to be noise."
-- Prevention rule: when three configurations of a flag measure *identically* (not just similar,
-  identical within the flag's own natural variance), check whether the flag actually reaches the
-  code path being measured before blaming environment noise — a config knob that's accepted,
-  echoed back to the user, and even fed into a performance-ceiling calculation can still be a
-  complete no-op past that point. "The tool printed confirmation it applied my setting" is not the
-  same claim as "the setting was applied."
+  measurement noise alone; user pushback ("in the same hardware still does not make sense for bf16
+  and int4 to be together") correctly rejected that. Root cause: `forward.c`'s classifier dispatch
+  had two branches — `w->q35_is_q2_0_model` (true for this model) took an **unconditional**
+  `parallel_matmul_q2_0(...)` path regardless of `--classifier`; only the non-Q2_0 `else` branch
+  read `hp->classifier_fmt`. My first fix attempt only added a warning explaining the no-op rather
+  than implementing real per-format support, reasoning that materializing a separate BF16/INT8/INT4
+  copy of a 248320×5120 vocab was too large an architectural change to take on unprompted. User
+  explicitly rejected that as insufficient ("Fix the no-op... No shortcuts, no honest explanations,
+  no fooling around") — correctly: a warning documents a broken feature, it doesn't fix one.
+- Real fix: `gguf_loader.c` now materializes the classifier for Q2_0-native models — but **only**
+  when the user explicitly passes `--classifier` (new `TnHardwareProfile.classifier_explicit` flag,
+  set only in `tn_hardware_profile_set_classifier()`), so the default zero-copy path is unaffected
+  and the multi-GB cost is opt-in, not forced on every load. When explicit, it dequantizes the raw
+  Q2_0 output tensor to F32 (`gguf_dequant_q2_0`), rounds to BF16 (new `f32_to_bf16_round`,
+  round-to-nearest-even — not a naive truncation, which would bias the whole tensor one direction),
+  and reuses the existing `weights_build_classifier_quant()` (previously only called from the
+  non-Q2_0 path) to derive INT8/INT4 from that BF16 base. `forward.c`'s Q2_0 branch now checks
+  `classifier_explicit` and dispatches to `parallel_matmul_i4`/`_i8`/`_bf16` against the
+  materialized buffers, falling back to the original zero-copy `parallel_matmul_q2_0` only when no
+  explicit format was requested. The materialized `w->wcls` is registered via the existing
+  `GGUFWeightStore` (`store_add`) — confirmed no double-free risk since `weights_free_pointers`
+  never frees `w->wcls` directly (only `wcls_i8`/`wcls_i4`/their scales, which `weights_build_
+  classifier_quant` itself owns).
+- Verified real, differentiated results (strictly sequential runs, freshly recalibrated each time,
+  idle host, 4 threads, Ternary-Bonsai-27B, 40-token generations):
+  `auto` (default zero-copy Q2_0) = **1.19 tok/s**, `--classifier bf16` = **1.13 tok/s**,
+  `--classifier int8` = **2.60 tok/s**, `--classifier int4` = **2.62 tok/s**. Three genuinely
+  different, ordered numbers this time — not three measurements of the same code path.
+- Unexpected finding worth recording: INT8/INT4 are ~2.2x *faster* than the zero-copy default, even
+  though raw Q2_0 (2.125 bits/weight) is smaller than materialized INT4 (4 bits) or INT8 (8 bits) —
+  the opposite of what "smaller footprint = faster" would predict. The general-purpose VNNI
+  int8/int4 dot-product kernel (`parallel_matmul_i4`/`_i8`) is apparently more compute-efficient per
+  element for this matmul shape than the specialized Q2_0 decode-and-FMA kernel, so here the extra
+  bytes read are outweighed by cheaper per-element math. Don't assume a smaller quantization format
+  is always faster without measuring — bandwidth and compute-efficiency can trade off either way
+  depending on the kernel, not just the byte count.
+- Affected files: `include/core/hardware_profile.h` (`classifier_explicit` field),
+  `src/core/hardware_profile.c` (sets it), `src/core/gguf_loader.c` (materialization +
+  `f32_to_bf16_round`), `src/transformer/forward.c` (dispatch), `src/cli/main.c` (removed the
+  now-obsolete no-op warning).
+- Detection: user explicitly rejected both the "noise floor" explanation and the warning-only fix,
+  in two separate rounds of pushback.
+- Prevention rule (unchanged, still holds): when multiple configurations of a flag measure
+  *identically*, check whether the flag reaches the code path being measured before blaming
+  environment noise. New rule from this round: when a bug is found and a full fix is judged "too
+  large" to take on unprompted, flagging it explicitly (as this session did) is the right call *only
+  as a proposal* — it is not a substitute for doing the fix once asked, and the flagged concern
+  itself may be smaller than estimated (this fix touched 4 files, not a full architecture change).
 
 ### 2026-07-16 — Underlying virtualized host was recycled mid-session, invalidating a same-host performance comparison
 - Summary: while investigating the classifier-tok/s question above, `/proc/uptime` showed this
