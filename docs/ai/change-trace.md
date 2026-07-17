@@ -1,7 +1,22 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-07-16.
+> Update after each meaningful sub-step. Last updated: 2026-07-17.
+
+### 2026-07-17 — Consolidated RCA report for the 2.74 → ~1 tok/s Ternary-Bonsai drop
+- What: Added `docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md` — a single consolidated root-cause
+  analysis of the post-classifier-work throughput drop, independently re-verifying the
+  evidence already recorded in `mistakes.md`/`decision-log.md` (hot-path diff audit of
+  `ce8e90d..HEAD`, the commit-bisection screenshots incl. the pre-VNNI control leg, and the
+  host-A hardware profile recovered from git history via `git show 591333d:...pz_t4_peak.png`).
+  Conclusion unchanged and now falsifiably documented in one place: host performance-profile
+  change (L3 260→33 MiB, DRAM 16→~11-12 GB/s, first-touch stalls), not a code regression.
+- Why: the question keeps being re-asked; scattered evidence made the answer look like an
+  assertion rather than a proof. Report includes the restore/improve action plan
+  (`--classifier int8/int4` same-session A/B; Q2_0 LM-head unpack profiling once a stable
+  host is available).
+- Areas: `docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md`, README Qwen-section link.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
 
 ### 2026-07-16 — Qwen 3.5/3.6 hybrid-attention support (Ternary-Bonsai-27B) + benchmark
 - What: Full engine support for Qwen 3.5/3.6's hybrid Gated-DeltaNet/Gated-Attention
