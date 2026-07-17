@@ -96,33 +96,57 @@ static int64_t bw_now_ns(void) {
 
 #if TN_POSIX
 #include <pthread.h>
+#endif
 
+/* Shared by the POSIX multi-threaded probe and the single-threaded
+ * fallback — no pthread dependency in the pass function itself. */
 typedef struct {
-    volatile char *buf;
+    const unsigned char *buf;
     size_t size;
     double gbps;
 } BwThreadArg;
 
+/* Defeats dead-code elimination of the read loop below without making every
+ * accumulator access volatile (which would serialize the loads). */
+static volatile uint64_t g_bw_probe_sink;
+
+/*
+ * One full-buffer read pass. TWO fixes on 2026-07-17 (both had been
+ * under-stating measured bandwidth, compounding to ~3x total — see
+ * docs/architecture/CEILING_CALCULATION.md §2 and docs/ai/mistakes.md):
+ *
+ * 1. ACCOUNTING: this function used to run its own 3 passes internally,
+ *    while the caller timed the whole create/join round but divided only
+ *    ONE pass worth of bytes by that wall time — a systematic ~3x
+ *    under-measurement (the correctly-accounted per-thread bytes/elapsed
+ *    figures were computed and then discarded). Now each thread runs
+ *    exactly one pass per round; the caller's existing 3-round best-of
+ *    loop provides the repetition.
+ *
+ * 2. ACCESS PATTERN: reads every byte via 8 independent 64-bit accumulator
+ *    chains (one cache line per iteration) instead of one volatile char
+ *    per line. The volatile-scalar loop serialized a 1-byte load + a
+ *    volatile store per line and couldn't keep enough line fills in
+ *    flight. Independent non-volatile accumulators let the compiler
+ *    vectorize and the core overlap misses; the volatile sink store
+ *    happens once per pass, outside the timed loop.
+ */
 static void *bw_thread_fn(void *arg) {
     BwThreadArg *a = (BwThreadArg *)arg;
-    double best = 0.0;
-    for (int pass = 0; pass < 3; pass++) {
-        volatile int64_t sink = 0;
-        int64_t t0 = bw_now_ns();
-        for (size_t i = 0; i < a->size; i += 64) {
-            sink += a->buf[i];
-        }
-        int64_t elapsed = bw_now_ns() - t0;
-        (void)sink;
-        if (elapsed > 0) {
-            double g = (double)a->size / (double)elapsed;
-            if (g > best) best = g;
-        }
+    uint64_t s0 = 0, s1 = 0, s2 = 0, s3 = 0,
+             s4 = 0, s5 = 0, s6 = 0, s7 = 0;
+    const uint64_t *p = (const uint64_t *)(const void *)a->buf;
+    size_t n_words = a->size / 8;
+    int64_t t0 = bw_now_ns();
+    for (size_t i = 0; i + 8 <= n_words; i += 8) {
+        s0 += p[i];     s1 += p[i + 1]; s2 += p[i + 2]; s3 += p[i + 3];
+        s4 += p[i + 4]; s5 += p[i + 5]; s6 += p[i + 6]; s7 += p[i + 7];
     }
-    a->gbps = best;
+    int64_t elapsed = bw_now_ns() - t0;
+    g_bw_probe_sink += s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7;
+    a->gbps = (elapsed > 0) ? (double)a->size / (double)elapsed : 0.0;
     return NULL;
 }
-#endif
 
 /* Forward declaration — defined below after /proc/cpuinfo parsing */
 static int count_physical_cores(void);
@@ -147,19 +171,21 @@ static double probe_dram_bandwidth(void) {
 
     /* Allocate and touch all pages */
     for (int i = 0; i < n_threads; i++) {
-        args[i].buf = (volatile char *)malloc(per_thread);
-        if (!args[i].buf) { n_threads = i; break; }
+        unsigned char *mem = (unsigned char *)malloc(per_thread);
+        if (!mem) { n_threads = i; break; }
+        for (size_t j = 0; j < per_thread; j += 4096)
+            mem[j] = (unsigned char)(i + j);
+        args[i].buf = mem;
         args[i].size = per_thread;
         args[i].gbps = 0.0;
-        for (size_t j = 0; j < per_thread; j += 4096)
-            ((char *)args[i].buf)[j] = (char)(i + j);
     }
 
     if (n_threads == 0) return 0.0;
 
-    /* Measure WALL TIME for all threads to complete a single pass.
-     * This gives true aggregate bandwidth including bus contention.
-     * Run 3 passes, take the best. */
+    /* Measure WALL TIME for all threads to complete ONE pass each — true
+     * aggregate bandwidth including bus contention (plus a small
+     * thread-create/join overhead, which biases slightly conservative).
+     * 3 rounds, best kept. */
     size_t total_bytes = per_thread * (size_t)n_threads;
     double best_gbps = 0.0;
 
@@ -181,22 +207,20 @@ static double probe_dram_bandwidth(void) {
         free((void *)args[i].buf);
     return best_gbps;
 #else
-    /* Fallback: single-threaded probe */
-    volatile char *buf = (volatile char *)malloc(per_thread);
+    /* Fallback: single-threaded probe (same one-pass-per-round
+     * multi-accumulator read as bw_thread_fn — see its comment). */
+    unsigned char *buf = (unsigned char *)malloc(per_thread);
     if (!buf) return 0.0;
     for (size_t i = 0; i < per_thread; i += 4096)
-        ((char *)buf)[i] = (char)i;
+        buf[i] = (unsigned char)i;
 
     double best = 0.0;
     for (int pass = 0; pass < 3; pass++) {
-        volatile int64_t sink = 0;
-        int64_t t0 = bw_now_ns();
-        for (size_t i = 0; i < per_thread; i += 64) sink += buf[i];
-        int64_t el = bw_now_ns() - t0;
-        (void)sink;
-        if (el > 0) { double g = (double)per_thread / (double)el; if (g > best) best = g; }
+        BwThreadArg a = { .buf = buf, .size = per_thread, .gbps = 0.0 };
+        bw_thread_fn(&a);
+        if (a.gbps > best) best = a.gbps;
     }
-    free((void *)buf);
+    free(buf);
     return best;
 #endif
 }
