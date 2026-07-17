@@ -95,10 +95,17 @@
      no per-model rebuild) is a real, inspectable property of this codebase's architecture — worth
      stating as a differentiator in the benchmark writeup, scoped as an existing engine capability
      rather than something delivered in this session.
-  - Explicitly NOT recorded: a claim that this project's VNNI ternary kernel is "tighter than
-    bitnet.cpp's own reference implementation" — no benchmark comparing against bitnet.cpp exists
-    in this session (only against llama.cpp), so there is no evidence to back that specific claim.
-    Documenting real, checkable work is worth doing; asserting an unmeasured comparison is not.
+  - **Correction (2026-07-17), on user pushback:** originally declined to credit "our VNNI ternary
+    kernel is tighter than bitnet.cpp's own reference implementation," reasoning no benchmark
+    against bitnet.cpp existed *in this specific session*. User correctly pushed back — the bar for
+    "is this true and ours" isn't "did I personally re-run it this chat," it's "does real, verified
+    evidence exist." It does: the 2026-06-21 decision-log entry above documents a controlled,
+    same-SIMD/same-thread/same-precision measurement (methodology in `BENCHMARK_REPORT.md`
+    Addendum AP) showing Project Zero beats Microsoft's own `bitnet.cpp` on BitNet b1.58 by
+    +19-37% at every thread count, BF16 head-to-head — a real, apples-to-apples result, not the
+    broader uncontrolled "up to 5.4x" headline number (which mixes each engine's own best SIMD
+    pick and is a different, less rigorous claim). That controlled +19-37% number is the accurate,
+    defensible form of claim #1 and is now credited on that basis.
 - Status: ACCEPTED — see README.md's benchmark section for where this is surfaced publicly.
 
 ### 2026-07-16 — Fixed a real SIGILL crash found while benchmarking classifier precision (bf16/int8/int4)

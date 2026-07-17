@@ -5,6 +5,49 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — Banner was printing correctly all along; the screenshot capture tool was scrolling it off before the shot
+- Summary: user pointed out the ASCII banner still wasn't visible in the benchmark screenshots
+  despite the earlier fix making `main.c` print it unconditionally in a TTY. Checked file mtimes
+  first: all 8 screenshots in `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/`
+  are from 20:34, the banner fix (`b953281`) landed at 21:23 — the screenshots simply predate the
+  fix and were never regenerated. But regenerating one (`classifier_bf16.png`) with the current
+  binary still didn't show the banner — a second, independent bug.
+- Root cause: `tools/screenshots/cli/capture.mjs` renders the captured session through an xterm.js
+  terminal fixed at `rows: 70` (`capture.html`). Ternary-Bonsai-27B's startup output (calibration
+  box + hardware profile + model config dump) is well over 100 lines before generation even starts,
+  so by the time the screenshot is taken the banner (printed first) has scrolled out of the
+  terminal's own view — same failure mode as a real terminal scrolling. `page.screenshot()` was
+  also missing `fullPage: true`, so even a taller terminal would've been clipped to the fixed
+  900x1200 Playwright viewport.
+- Correction: `capture.html` now reads an optional `?rows=` query param (default stays 70,
+  unchanged for existing short-output captures like the BitNet demos); `capture.mjs` accepts
+  `PZ_CAPTURE_ROWS` and passes it through, and its final screenshot call now sets
+  `fullPage: true`. Regenerated all 6 PZ screenshots (classifier auto/bf16/int8/int4, thread t=1/t4)
+  with `PZ_CAPTURE_ROWS=170` — banner confirmed visible in all of them.
+- Second finding while regenerating: the 3 classifier screenshots also still had the *old buggy
+  no-op numbers* (1.07/1.09/1.07) baked in from before the real classifier fix — already wrong
+  independent of the banner issue, since the README table had already been corrected. Would have
+  been a real, visible inconsistency between the README table and its own linked screenshots.
+- Third finding, incidental but important: the fresh classifier sweep taken during this
+  regeneration (auto=1.27, bf16=1.21, int8=1.30, int4=1.37) reproduced the same ordering
+  (BF16 slowest, INT4 fastest) as the original post-fix sweep, but with a much smaller spread than
+  the original (1.13/1.19/2.60/2.62). Two independent same-direction results across sessions is
+  good evidence the fix's *effect direction* is real; the earlier note about magnitude being
+  host-dependent (see the memory-subsystem entry below) is reinforced, not contradicted — a ~2.2x
+  gap and a ~13% gap are both "INT4 faster than BF16," just by very different amounts depending on
+  host state at measurement time.
+- Affected files: `tools/screenshots/cli/capture.mjs`, `tools/screenshots/cli/capture.html`,
+  6 regenerated PNGs, `README.md` (numbers + explanatory notes).
+- Detection: user directly re-checked the actual deliverable (the screenshots) rather than trusting
+  my claim that the banner fix was complete — the fix to the printing logic was real and verified,
+  but "verified in isolation" (a pty capture) missed that the actual published artifacts used a
+  different capture path with its own independent bug.
+- Prevention rule: when a fix is meant to change a *visible artifact* (a screenshot, a rendered
+  page), verify the actual artifact that ships, not just the underlying mechanism in isolation —
+  a pty test proved the banner prints; it didn't prove the screenshot pipeline shows it. Two
+  correct components can still compose into a wrong result if a fixed-size capture window is
+  smaller than the real output.
+
 ### 2026-07-17 — This host's memory subsystem (not just DRAM bandwidth) is unstable across sessions, and it fully explains the 2.74 → ~1.2 tok/s drop
 - Summary: user asked why `auto`'s post-fix 1.19 tok/s was so far below the README's earlier
   2.74 tok/s figure for the identical default configuration (Ternary-Bonsai-27B, 4 threads, no
