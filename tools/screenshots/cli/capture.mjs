@@ -103,6 +103,24 @@ async function main() {
 
   await page.waitForTimeout(300); // let xterm.js finish its render pass
 
+  // Trim the terminal down to however many rows the captured session
+  // actually used. `rows` (default 70, override via PZ_CAPTURE_ROWS) is
+  // sized generously so long startup output doesn't scroll the banner out
+  // of view, but most runs use far fewer rows than that — without this,
+  // fullPage:true screenshots a mostly-empty terminal padded with a wall of
+  // unused blank rows below the real content.
+  await page.evaluate(() => {
+    const term = window.pzTerm;
+    const buf = term.buffer.active;
+    let lastUsedRow = 0;
+    for (let y = 0; y < term.rows; y++) {
+      const line = buf.getLine(y);
+      if (line && line.translateToString(true).length > 0) lastUsedRow = y;
+    }
+    const trimmedRows = Math.min(term.rows, lastUsedRow + 2);
+    if (trimmedRows < term.rows) term.resize(term.cols, trimmedRows);
+  });
+
   if (caption) {
     await page.evaluate((text) => {
       const capEl = document.createElement('div');
@@ -114,7 +132,12 @@ async function main() {
     }, caption);
   }
 
-  await page.screenshot({ path: outputPath, fullPage: true });
+  // Screenshot the body element directly rather than page.screenshot({
+  // fullPage: true }): when trimmed content is shorter than the 1200px
+  // viewport, document.documentElement.scrollHeight (what fullPage relies
+  // on) is clamped to the viewport height by the browser, not the actual
+  // content height — the body element's bounding box isn't.
+  await page.locator('body').screenshot({ path: outputPath });
   await browser.close();
   console.log(`Wrote ${outputPath}`);
 }
