@@ -144,6 +144,13 @@ All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/s
 
 ### Qwen 3.5/3.6 (Ternary-Bonsai-27B, hybrid Gated-DeltaNet + GQA, Q2_0 ternary) — 4-core Xeon VM
 
+**What made this fast, specifically:**
+
+- **Format detection, not a documented spec.** Ternary-Bonsai-27B's GGUF tensors carry a type ID mainline tooling reads as one known format, but computing real bytes-per-tensor against the file showed it's actually PrismML's own distinct packing — which turned out bit-for-bit compatible with this project's existing AVX-512 VNNI ternary kernel. Connecting the two took Q2_0 matmul from ~1% of this host's DRAM bandwidth ceiling to **~29x faster** ([`mistakes.md`](docs/ai/mistakes.md)).
+- **Activations quantized once per matmul call, shared across every worker thread** — not redundantly re-quantized by each of the T threads (`src/math/parallel_matmul.c`).
+- **A real ISA-dispatch bug, not just a fallback path.** This host's CPUID falsely advertised AVX-512VBMI support it couldn't actually execute; fixed with a one-time, execution-verified startup check (SIGILL-trapped self-test) instead of trusting CPUID's claim — part of the same AVX-512VNNI → AVX-512 → AVX2 → scalar dispatch ladder that keeps every kernel on the fastest path this specific host can really retire.
+- **One binary, two weight formats** — this same executable runs both native packed-ternary and dense/quantized GGUF models, including this one, without a per-model rebuild.
+
 **Thread scaling, Project Zero vs. llama.cpp** — same prompt, same identical `Ternary-Bonsai-27B-Q2_0.gguf` file, greedy decoding, 60-token cap, run **strictly sequentially** (one process at a time, full exit before the next starts):
 
 | Threads | Project Zero (tok/s) | llama.cpp (tok/s) | PZ Gain |
@@ -167,19 +174,22 @@ Project Zero scales near-linearly across all 4 physical cores with no plateau �
 
 All 8 screenshots (t=1..4 × 2 engines): [`benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/)
 
-**Classifier precision (BF16 / INT8 / INT4), at the confirmed-best 4 threads:**
+**Classifier precision (auto / BF16 / INT8 / INT4), at the confirmed-best 4 threads:**
 
-| Classifier | tok/s | Data/token (MB) | Ceiling (tok/s @ 100% BW) | DRAM BW measured (GB/s) |
-|---|---|---|---|---|
-| BF16 | 1.07 | 1149 | 10.2 | 12.3 |
-| INT8 | 1.09 | 836 | 11.2 | 9.9 |
-| INT4 | 1.07 | 680 | 14.0 | 10.0 |
+| Classifier | tok/s | Classifier storage | Notes |
+|---|---|---|---|
+| auto (default) | 1.19 | 322 MB, zero-copy raw Q2_0 | no materialization, no extra RAM |
+| BF16 (explicit) | 1.13 | 2.5 GB materialized | slowest — largest footprint |
+| INT8 (explicit) | 2.60 | 1.2 GB materialized | ~2.2x faster than default |
+| INT4 (explicit) | 2.62 | 0.6 GB materialized | fastest |
 
 <p align="center">
-  <img src="docs/qwen35_classifier_comparison.png" width="640" alt="Classifier precision comparison: BF16 vs INT8 vs INT4 tok/s on Ternary-Bonsai-27B">
+  <img src="docs/qwen35_classifier_comparison.png" width="640" alt="Classifier precision comparison: auto vs BF16 vs INT8 vs INT4 tok/s on Ternary-Bonsai-27B">
 </p>
 
-**Corrected finding (a real bug, not just noise):** the first pass at this data blamed the identical 1.07/1.09/1.07 tok/s numbers on host measurement noise alone — insufficient, since noise doesn't explain an exact match this precise. The actual cause: `forward.c`'s classifier dispatch never reads `--classifier` at all for Q2_0-native models like this one — it always calls the same zero-copy raw-Q2_0 LM head matmul regardless of what was requested. The three runs weren't measuring three code paths; they ran the identical code every time. INT4's classifier data footprint really is 41% smaller than BF16's (1149→680 MB/token, from the engine's own byte-accurate tensor accounting) — that number was never wrong — but it describes a precision switch that never actually engages for this model family. Fixed by adding an explicit `[warning] --classifier has no effect on this model` printout rather than silently no-op'ing a flag the user asked for (implementing real per-format materialization would cost ~5 GB extra RAM for this model's 248320×5120 vocab — a deliberate, documented, separate tradeoff, not a quick fix). The underlying virtualized host was also independently confirmed to have been recycled between the thread-scaling sweep and this one (L2/L3/DRAM-bandwidth readings genuinely differ between the two) — real, but not the reason these three numbers match. Full writeup in [`docs/ai/mistakes.md`](docs/ai/mistakes.md).
+**Real bug, then a real fix:** the first pass at this data showed BF16/INT8/INT4 all measuring ~1.07 tok/s — identical, not just close. Root cause: `forward.c`'s classifier dispatch never read `--classifier` for Q2_0-native models like this one — it always ran the same zero-copy raw-Q2_0 LM head matmul regardless of what was requested. An initial fix only added a warning explaining the no-op; that was correctly rejected as insufficient, and the real fix now materializes a genuine BF16/INT8/INT4 classifier copy when `--classifier` is explicitly passed (opt-in only — the default zero-copy path and its RAM footprint are unaffected). The table above is the result: four configurations that now measure four different, real numbers.
+
+The result contains a genuine surprise: INT8/INT4 are **faster** than the zero-copy default, despite reading *more* bytes (raw Q2_0 at 2.125 bits/weight is the smallest of the four). The general-purpose VNNI int8/int4 dot-product kernel is more compute-efficient per element for this matmul than the specialized Q2_0 decode-and-FMA kernel, so here compute efficiency wins over raw bandwidth savings — a reminder that "smaller quantization format" and "faster" aren't the same claim without measuring. Full writeup in [`docs/ai/mistakes.md`](docs/ai/mistakes.md) and [`docs/ai/decision-log.md`](docs/ai/decision-log.md).
 
 Screenshots: [`classifier_bf16.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_bf16.png) · [`classifier_int8.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int8.png) · [`classifier_int4.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int4.png)
 
