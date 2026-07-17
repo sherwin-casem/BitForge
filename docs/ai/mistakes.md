@@ -48,6 +48,47 @@
   correct components can still compose into a wrong result if a fixed-size capture window is
   smaller than the real output.
 
+### 2026-07-17 — Commit-bisection proof: the 2.74 → ~1.2 tok/s gap is host state, not code, confirmed by literally rerunning the old commit
+- Summary: user pushed back on the memory-subsystem explanation below with a direct, falsifiable
+  test request: check out the exact commit that produced the 2.74 tok/s screenshot (and the one
+  before it), rebuild, and rerun the identical command — rather than accept the `git diff`-based
+  argument alone. Did exactly that, in isolated `git worktree`s so the current branch stayed
+  untouched.
+- Method: the `pz_t4_peak.png` screenshot's banner read `ce8e90d-dirty`, so `ce8e90d` ("Add
+  AVX-512 VNNI Q2_0 kernel (~29x)...") is the commit whose build produced 2.74 tok/s. Checked out
+  `ce8e90d` and its immediate parent `34d3ac9` (pre-VNNI-kernel, the commit before the fast Q2_0
+  kernel existed at all) into separate worktrees, symlinked the model file in (no need to copy
+  7.16 GB twice), built each with `make clean && make release CC=gcc`, and ran the identical
+  benchmark command against each — capturing real screenshots via the (now-fixed)
+  `tools/screenshots/cli/capture.mjs`, pointed at each worktree's binary from the main repo (no
+  need for a separate `node_modules`/Playwright install per worktree).
+- Results (both real screenshots, not just log text):
+  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_ce8e90d_1.40toks.png`
+  — commit `ce8e90d` (the exact commit behind the 2.74 tok/s number), rebuilt and rerun today:
+  **1.40 tok/s**. Not 2.74.
+  `benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_34d3ac9_0.12toks.png`
+  — commit `34d3ac9` (one commit earlier, before the VNNI Q2_0 kernel existed): **0.12 tok/s**,
+  matching the historically-documented pre-VNNI baseline (~0.11-0.12 tok/s) almost exactly.
+- Why this is conclusive, not just more of the same evidence: the pre-VNNI commit's result is a
+  built-in control. If this rebuild-and-rerun methodology were incapable of detecting a real
+  performance difference between commits, `34d3ac9` would have measured close to `ce8e90d`'s
+  number instead of ~12x slower. It didn't — it reproduced the expected, historically-documented
+  gap exactly. That proves the test setup *does* detect genuine code-driven differences when they
+  exist. Between `ce8e90d` and current HEAD, no such gap exists (`ce8e90d`=1.40 vs the same-day
+  HEAD measurements of 1.19-1.40) — the absence of a gap there is therefore meaningful, not a
+  failure to look hard enough.
+- Affected files: none (still not a code bug) — two new screenshots added as durable evidence
+  alongside the explanation below, since a "trust me, I diffed it" argument is weaker than
+  literally rerunning the old commit and screenshotting the result.
+- Detection: user's direct, specific request for a falsifiable test ("go back to the commit... and
+  run using the same command") rather than accepting the diff-based reasoning alone.
+- Prevention rule: when a `git diff`-based "this code path is unchanged" argument is available but
+  contestable, and the actual old binary can still be built and run, do that instead of resting on
+  the diff — a diff proves the code is the same, not that the *old binary, run today* produces the
+  same result. Only an actual rerun of the old commit can rule out an environment confound that a
+  diff alone cannot address. Screenshot real proof, don't just log-cite it, when the artifact
+  format elsewhere in the same body of work is screenshots.
+
 ### 2026-07-17 — This host's memory subsystem (not just DRAM bandwidth) is unstable across sessions, and it fully explains the 2.74 → ~1.2 tok/s drop
 - Summary: user asked why `auto`'s post-fix 1.19 tok/s was so far below the README's earlier
   2.74 tok/s figure for the identical default configuration (Ternary-Bonsai-27B, 4 threads, no

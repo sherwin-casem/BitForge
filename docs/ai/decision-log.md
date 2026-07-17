@@ -3,6 +3,18 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-17.
 
+### 2026-07-17 — Commit-bisected the 2.74 tok/s question instead of resting on a diff-based argument
+- Decision: user asked for direct proof rather than accepting the earlier `git diff`-based
+  reasoning — checked out the exact commit behind the 2.74 tok/s screenshot (`ce8e90d`) plus its
+  parent (`34d3ac9`, pre-VNNI-kernel) in isolated git worktrees, rebuilt each, and reran the
+  identical benchmark command, capturing real screenshots (not just log text) via the fixed
+  capture tool. `ce8e90d` measured 1.40 tok/s today (not 2.74); `34d3ac9` measured 0.12 tok/s,
+  matching the historical pre-VNNI baseline almost exactly — a built-in control proving the
+  methodology does detect real code-driven gaps when they exist, which makes the *absence* of a
+  gap between `ce8e90d` and current HEAD meaningful rather than a failure to look hard enough.
+  Full evidence and screenshot paths in `mistakes.md`.
+- Status: ACCEPTED — this closes the "is it code or host" question definitively for this benchmark.
+
 ### 2026-07-17 — Investigated why `auto` measured 1.19-1.24 tok/s vs the README's earlier 2.74 tok/s, instead of assuming noise
 - Decision: user asked directly why the post-fix `auto` number was so much lower than the earlier
   benchmark's 2.74 tok/s for the identical default configuration. Ruled out the classifier fix as
