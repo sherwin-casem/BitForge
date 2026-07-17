@@ -73,26 +73,30 @@ layers hold O(1) state and add nothing that scales with position.
 
 ## 4. The four computation sites
 
-1. **`tn_hardware_profile_init()`** — `src/core/hardware_profile.c` (constants at :23-27,
-   projection at :427+). Runs **before the model file is opened** — it cannot know the real
-   model, so it seeds `weight_bytes_per_tok` from the BitNet-2B compile-time constants and
-   applies an **L3-retention heuristic**: classifier counted as cached if it fits in L3, then
-   `min(L3 − classifier, ternary_bytes)` of layer weights also counted cached, remainder
-   billed to DRAM; if everything fits, ceiling prints 999 ("compute-limited"). Note the
-   header comment says "~half stay cached" but the code caches the `min()` expression — the
-   literal ×0.5 heuristic lives only in calibration (site 4). Until 2026-07-17 this pre-load
-   estimate was never corrected afterwards — the root cause of the "1149 MB / 17.1 tok/s"
-   fiction for the 27B model. The startup box now labels these two lines "(pre-load est.)".
+1. **`tn_hardware_profile_init()`** — `src/core/hardware_profile.c` (`MODEL_*` constants
+   near the top of the file, projection in step 10 of init). Runs **before the model file is
+   opened** — it cannot know the real model, so it seeds `weight_bytes_per_tok` from the
+   BitNet-2B compile-time constants and applies an **L3-retention heuristic**: classifier
+   counted as cached if it fits in L3, then `min(L3 − classifier, ternary_bytes)` of layer
+   weights also counted cached, remainder billed to DRAM; if everything fits, ceiling prints
+   999 ("compute-limited"). The in-code comment historically claimed "~half stay cached"
+   (the ×0.5 model only ever existed in calibration, site 4) and called the result "a LOWER
+   BOUND on actual performance" — backwards, since cache credit *raises* the projected
+   ceiling; both corrected 2026-07-17 after independent review. Until 2026-07-17 this
+   pre-load estimate was never corrected afterwards — the root cause of the "1149 MB /
+   17.1 tok/s" fiction for the 27B model. The startup box now labels these two lines
+   "(pre-load est.)".
 2. **`tn_hardware_profile_set_classifier()`** — :497. Re-derives classifier bytes for the
    chosen format (still from `MODEL_VOCAB`·`MODEL_DIM` constants — pre-load by necessity,
    same caveat) and recomputes the ceiling as a **plain division**, no L3 heuristic.
-3. **`tn_hardware_profile_set_model_bytes()`** — :523, called from `src/cli/main.c` (≈:290)
-   after GGUF weights load. The correction: real file size with the Q2_0 embedding/head
-   adjustment from §3, plain division, updates `model_fits_l3` and the summary, and main.c
-   prints `[profile] Data/token (loaded model): … -> ceiling …` (`main.c:321`). The L3
+3. **`tn_hardware_profile_set_model_bytes()`** — called from `src/cli/main.c` after weight
+   load, in **both** the GGUF branch (real file size with the Q2_0 embedding/head adjustment
+   from §3) and — since the 2026-07-17 independent review, which found the native branch
+   missing — the native branch (weight bytes minus the BF16 embedding table, plus the
+   classifier at its selected precision). Plain division, updates `model_fits_l3` and the
+   summary; main.c prints `[profile] Data/token (loaded model): … -> ceiling …`. The L3
    heuristic is deliberately dropped here: at multi-GB per-token streams, L3 covers <1% and
-   the adjustment is noise; for small models it would only widen an already-conservative
-   lower bound.
+   the adjustment is noise.
 4. **`tn_calibrate()` classifier estimates** — `src/core/calibration.c:403-423`. An
    *analytic* (not measured) per-format tok/s estimate feeding `--classifier auto-fast`:
    hardcoded 522 MB ternary + BitNet classifier dims, L3 retention modeled as
@@ -112,7 +116,7 @@ calibration box). Nothing in `src/api/` (`/metrics`, web UI) reads any of these 
 |---|---|---|---|---|
 | SmolLM2-135M F16 | 258 MiB (real file; old constants said 1149 — 4.5x over) | ~152 tok/s | 56.5 tok/s | ~37% |
 | Ternary-Bonsai-27B Q2_0 | 6511 MiB (7.165 GB file − embed − in-file head + zero-copy head) | **6.0 tok/s** | **3.56 tok/s** (optimized kernel; 2.74-2.80 pre-optimization, same session interleaved) | **59%** (was 45%) |
-| BitNet-2B native, BF16 cls | ~1179 MB pre-L3-heuristic (constants correct for this model) | (host-dependent) | — | Historical "95% of ceiling" claims used the pre-fix probe, so true utilization was ~3x lower; re-measure before citing |
+| BitNet-2B native, BF16 cls | 1149 MiB pre-L3-heuristic (522 MiB ternary + 626 MiB BF16 cls + 1 MiB norms; constants correct for this model) | (host-dependent) | — | Historical "95% of ceiling" claims used the pre-fix probe, so true utilization was ~3x lower; re-measure before citing |
 
 Historical translation: host A's famous 2.74 tok/s ≈ 18.6 GB/s of effective weight streaming.
 Its probe-reported "16.0 GB/s" was ~3x low (true ~48 GB/s), so that run sat at roughly **40%
@@ -167,6 +171,29 @@ Current state on this host for Ternary-Bonsai-27B, after this pass: **3.56 tok/s
 ## 8. Review log
 
 Independently reviewed on 2026-07-17 by a fresh-context reviewer (no access to the authoring
-session's derivation) — findings and dispositions:
+session's derivation; instructed to re-derive all figures from source before opening this
+document). The reviewer **independently re-derived and confirmed** the per-token byte
+accounting (its 6,827,406,400 B default-case figure matches `main.c`'s computation and this
+document exactly), independently found **both** pre-fix DRAM-probe defects (the ~3x
+pass-accounting error and the serialized volatile reads) before being told of them, and
+verified the KV-traffic bounds, the `set_model_bytes` embedding/head arithmetic (no
+double-counting, including the materialized-classifier case), and `bench_q2_0`'s byte
+accounting. Findings and dispositions:
 
-- *(populated after the review pass)*
+| # | Finding (severity order) | Disposition |
+|---|---|---|
+| 1 | Doc §2/§5/§6 still described the pre-fix 12.0 GB/s probe as current | **Already fixed** in the interim commit (reviewer read a mid-edit snapshot); §2/§5/§6 now derive from 41.2 GB/s |
+| 2 | `set_model_bytes` never called for native (non-GGUF) models — any non-BitNet-2B native model kept the 1149 MiB estimate forever | **FIXED**: native branch now computes per-token bytes (data − BF16 embedding + classifier@fmt) and calls it |
+| 3 | main.c comment claimed the embedding is excluded for generic GGUF; code bills the full file | **FIXED** (comment rewritten to state the upper-bound accounting honestly; code intentionally unchanged — embed tensor format isn't known generically, and the bias direction is conservative) |
+| 4 | MoE counts all experts (ceiling understated for DeepSeek) | Acknowledged, pre-existing documented TODO (§3); does not affect the Qwen35 figures (dense-FFN model) |
+| 5 | calibration.c converted GB/s→MiB/s with ×1024 instead of ×953.67 — printed cls_tokps ~7.4% high (rankings unaffected) | **FIXED** (correct factor + comment) |
+| 6 | §5 BitNet row said "~1179 MB" — a mixed-unit arithmetic slip; correct value 1149 MiB | **FIXED** in §5 |
+| 7 | L3-heuristic comment: "~half stay cached" never matched the `min()` code, and "LOWER BOUND on performance" is backwards (cache credit raises the ceiling) | **FIXED** (comment rewritten; §4 site 1 updated) |
+| 8 | Fixed probe accumulated its DCE-defeat sink from all threads unsynchronized — a benign but real data race | **FIXED** (per-thread sink, folded single-threaded after join) |
+| 9 | `bench_q2_0` printed max-abs-diff but never failed on divergence | **FIXED** (relative-epsilon check, exit(1)) |
+| 10 | `--classifier` on Q2_0 models materializes BF16+INT8+INT4 heads simultaneously (~4.2 GB RAM for the 27B) though one is streamed | Acknowledged; RAM cost, not a ceiling error — recorded as a follow-up (build only the requested format) |
+
+Reviewer's negative results (suspected, verified correct): KV bounds, 27B byte figures and
+old-probe ceilings, no classifier double-count, bench byte accounting and variant pairing.
+Cosmetic: two line-number citations had drifted after the probe rewrite — this document now
+prefers function-level references.

@@ -104,10 +104,14 @@ typedef struct {
     const unsigned char *buf;
     size_t size;
     double gbps;
+    uint64_t sink;   /* per-thread accumulator result, folded by the caller */
 } BwThreadArg;
 
-/* Defeats dead-code elimination of the read loop below without making every
- * accumulator access volatile (which would serialize the loads). */
+/* Defeats dead-code elimination of the read loops: each thread deposits its
+ * accumulator sum into its own arg (no shared writes from workers — a
+ * previous version had all threads += into this global directly, a benign
+ * but real data race; independent-review finding, 2026-07-17); the caller
+ * folds the per-thread sinks in here after join, single-threaded. */
 static volatile uint64_t g_bw_probe_sink;
 
 /*
@@ -143,7 +147,7 @@ static void *bw_thread_fn(void *arg) {
         s4 += p[i + 4]; s5 += p[i + 5]; s6 += p[i + 6]; s7 += p[i + 7];
     }
     int64_t elapsed = bw_now_ns() - t0;
-    g_bw_probe_sink += s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7;
+    a->sink = s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7;
     a->gbps = (elapsed > 0) ? (double)a->size / (double)elapsed : 0.0;
     return NULL;
 }
@@ -196,6 +200,8 @@ static double probe_dram_bandwidth(void) {
         for (int i = 0; i < n_threads; i++)
             pthread_join(threads[i], NULL);
         int64_t wall_elapsed = bw_now_ns() - wall_t0;
+        for (int i = 0; i < n_threads; i++)
+            g_bw_probe_sink += args[i].sink;   /* single-threaded fold */
 
         if (wall_elapsed > 0) {
             double gbps = (double)total_bytes / (double)wall_elapsed;
@@ -216,8 +222,9 @@ static double probe_dram_bandwidth(void) {
 
     double best = 0.0;
     for (int pass = 0; pass < 3; pass++) {
-        BwThreadArg a = { .buf = buf, .size = per_thread, .gbps = 0.0 };
+        BwThreadArg a = { .buf = buf, .size = per_thread, .gbps = 0.0, .sink = 0 };
         bw_thread_fn(&a);
+        g_bw_probe_sink += a.sink;   /* keep the reads observable here too */
         if (a.gbps > best) best = a.gbps;
     }
     free(buf);
@@ -460,20 +467,26 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
 
     if (g_profile.measured_bw_gbps > 0.0) {
         /*
-         * L3-aware ceiling estimate.
+         * L3-aware ceiling estimate (pre-load only; the post-load
+         * set_model_bytes() correction uses plain bandwidth division).
          *
          * In steady-state autoregressive inference, L3 retains recently
          * accessed weights between tokens. The effective DRAM read per
          * token depends on how much weight data fits in L3.
          *
-         * Heuristic model:
-         *  1. Classifier stays fully cached in L3 if cls_bytes < L3
-         *  2. Ternary layers: ~half stay cached from previous token
-         *     (last N/2 layers remain, first N/2 must be re-read)
-         *  3. L3 prefetching further reduces effective DRAM reads
+         * Heuristic (2026-07-17: comment corrected to match the code — it
+         * previously described a "~half stay cached" model that only ever
+         * existed in calibration.c's own copy):
+         *  1. Classifier counted fully cached if cls_bytes < L3
+         *  2. Ternary layers: min(L3 - classifier, ternary_bytes) counted
+         *     cached; the remainder billed to DRAM
          *
-         * This is a LOWER BOUND on actual performance — the engine
-         * often exceeds this ceiling due to prefetch effectiveness.
+         * Because the cache credit REDUCES billed DRAM bytes, it RAISES the
+         * projected ceiling — this is an optimistic estimate of the
+         * bandwidth bound, not a lower bound on performance (the previous
+         * comment had that backwards; measured throughput "exceeding the
+         * ceiling" was in fact a symptom of the probe under-measuring
+         * bandwidth, fixed the same day — see bw_thread_fn above).
          */
         double l3_usable = (double)g_profile.l3_cache_bytes;
         double dram_per_tok = g_profile.weight_bytes_per_tok;

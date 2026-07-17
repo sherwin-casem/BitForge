@@ -5,6 +5,37 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — Independent fresh-context review of the ceiling calculation: 3 new real defects found and fixed; core arithmetic independently confirmed
+- Summary: per user request, a clean-slate reviewer (no access to this session's derivations,
+  instructed to re-derive everything from source before reading the docs) audited the entire
+  ceiling calculation. It independently reproduced the per-token byte accounting to the byte
+  (6,827,406,400 B for Ternary-Bonsai-27B default), independently found BOTH pre-fix DRAM-probe
+  defects before being told of them, and surfaced defects this session had missed:
+  (1) `calibration.c` converted GB/s→MiB/s with ×1024 instead of ×(1e9/2^20)≈953.67 — every
+  printed classifier tok/s estimate ~7.4% high (rankings unaffected, common factor); (2) the
+  native (non-GGUF) branch never called `tn_hardware_profile_set_model_bytes()`, so any native
+  model that isn't exactly BitNet-2B kept the hardcoded 1149 MiB estimate — the same bug class
+  just fixed for GGUF, still live one branch over; (3) the fixed probe's DCE-defeat sink was
+  `+=`'d from all worker threads unsynchronized (benign result-wise, real data race). Also: a
+  main.c comment contradicting its own code (generic-GGUF embedding accounting), `bench_q2_0`
+  printing but not enforcing its correctness cross-check, a mixed-unit "1179 MB" arithmetic slip
+  in the doc, and the L3-heuristic comment calling a ceiling-raising cache credit a "LOWER
+  BOUND". All fixed same pass; full table in `docs/architecture/CEILING_CALCULATION.md` §8.
+- Detection: the review itself — specifically its independence (fresh context, derive-first
+  ordering), which is what made the ×1024 unit error and the missed native branch visible after
+  two authors (the original and this session) had each read past them.
+- Verification after fixes: gcc release 0 warnings, test suite 46/46, `make bench-q2` (hard
+  correctness gate now active) 1.45-1.57x, `make demo` golden ("Paris", SmolLM2 258 MB →
+  165.8 tok/s ceiling at 44.9 GB/s), 27B model run 3.81 tok/s (30 tok) at 40.3 GB/s measured /
+  5.9 ceiling; clang standalone compile-checks of all changed TUs clean. Native-branch
+  set_model_bytes is compile+logic-verified only (no native .bin model in this container) —
+  flagged, not hidden.
+- Prevention rule: for any numeric pipeline that survived one author and one later auditor,
+  assume unit-conversion factors and branch-coverage symmetry ("was the same fix applied to
+  every parallel branch?") are still unchecked until someone re-derives the numbers without
+  seeing the originals. A reviewer who must produce the figures independently before comparing
+  catches classes of error that diff-reading reviewers structurally cannot.
+
 ### 2026-07-17 — DRAM bandwidth probe under-measured ~3.4x (accounting bug + serialized reads); every historical "measured GB/s" and ceiling-utilization claim was wrong
 - Summary: while implementing the planned probe improvement (serialized volatile reads →
   multi-accumulator streaming), reading the outer timing loop revealed a second, larger bug:

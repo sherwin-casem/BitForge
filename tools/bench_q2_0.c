@@ -120,6 +120,16 @@ static void bench_shape(const char *name, int n, int d, ThreadPool *tp) {
         double mag = fabs((double)out_ref[i]);
         if (mag > max_mag) max_mag = mag;
     }
+    /* Fail hard on divergence, don't just print it (independent-review
+     * finding, 2026-07-17): the two variants share exact int32 block dots
+     * and differ only in float accumulation order, so anything beyond a
+     * loose relative epsilon is a real kernel bug, and a benchmark that
+     * keeps timing a wrong kernel would be worse than useless. */
+    if (max_abs > 1e-4 * (max_mag > 1.0 ? max_mag : 1.0)) {
+        fprintf(stderr, "%s: variant outputs diverge (maxdiff %.6g vs maxmag %.6g)\n",
+                name, max_abs, max_mag);
+        exit(1);
+    }
 
     /* Interleaved timing: ref/new alternate so slow host drift hits both. */
     enum { REPS = 7 };

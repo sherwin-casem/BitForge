@@ -421,7 +421,12 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         double l3_mb       = (double)hw->l3_cache_bytes / (1024.0 * 1024.0);
         double cached      = (l3_mb >= ternary_mb) ? ternary_mb : l3_mb * 0.5;
         double dram_mb     = ternary_mb - cached;
-        double bw_mbps     = base_bw * 1024.0;
+        /* base_bw is decimal GB/s (bytes/ns from the probe); the *_mb sizes
+         * are MiB, so the conversion is 1e9/2^20 ≈ 953.67 MiB/s per GB/s —
+         * NOT 1024 (2026-07-17, independent-review finding: the old *1024
+         * inflated every printed cls_tokps ~7.4%; rankings were unaffected
+         * since the error was a common factor). */
+        double bw_mbps     = base_bw * (1e9 / (1024.0 * 1024.0));
 
         result->cls_tokps[0] = bw_mbps / (dram_mb + bf16_cls_mb);
         result->cls_tokps[1] = bw_mbps / (dram_mb + int8_cls_mb);
