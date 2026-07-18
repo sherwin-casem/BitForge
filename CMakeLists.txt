@@ -318,10 +318,13 @@ if(PZ_DIST AND NOT MSVC)
         COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
     set_source_files_properties(${PZ_AVX512_SRCS} PROPERTIES
         COMPILE_OPTIONS "-mavx2;-mfma;-mf16c;-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq")
+    # -mf16c on matmul_q2_0_vnni.c: _mm_cvtph_ps in the optimized row dot
+    # (mirrors the Makefile per-file rule, 2026-07-17)
     set_source_files_properties(src/math/ternary_matmul_packed_vnni.c
-        src/math/ternary_matmul_packed_vnni256.c
-        src/math/matmul_q2_0_vnni.c PROPERTIES
+        src/math/ternary_matmul_packed_vnni256.c PROPERTIES
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vl")
+    set_source_files_properties(src/math/matmul_q2_0_vnni.c PROPERTIES
+        COMPILE_OPTIONS "-mavx512vnni;-mavx512vl;-mf16c")
     set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavxvnni")
     set_source_files_properties(src/math/simd_dispatch.c PROPERTIES

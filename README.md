@@ -18,12 +18,28 @@
 
 ---
 
-Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`** — and dense GGUF models — no GPU, no Python, no ML framework.
+Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`**, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, and dense GGUF models — no GPU, no Python, no ML framework.
 
 - **Pure C, zero runtime deps** — `make release`, one executable, nothing else required
 - **3.5–8.3× faster than bitnet.cpp on i5-11300H** (INT4, t=1..8) · **1.33–1.80× faster on 4-core Xeon** ([third-party verified on OpenBenchmarking.org ↓](#benchmarks))
-- **35.79 tok/s on i5-11300H (INT4, 500 tokens, best-of-3)** · **36.25 tok/s on Xeon (PGO+LTO)** — 95% of DRAM bandwidth ceiling
+- **35.79 tok/s on i5-11300H (INT4, 500 tokens, best-of-3)** · **36.25 tok/s on Xeon (PGO+LTO)**
 - **One binary, two model families** — BitNet ternary and dense F16 GGUF, no per-model rebuild
+
+---
+
+### Bonsai-27B on ordinary x86 — faster than the vendor's own engine
+
+Project Zero runs [PrismML's Ternary-Bonsai-27B](https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf) (ternary Q2_0, 7.16 GB, Apache 2.0) **4.2–4.8× faster than PrismML's own llama.cpp fork at every thread count** on a plain 4-core AVX-512 Xeon VM — **2.97 vs 0.70 tok/s at t=4** (60-token greedy decode, identical file/prompt/session, drift-bracketed by sentinel runs; [18 raw terminal captures + methodology](benchmark_results/sweep3_2026-07-18/) · [full comparison ↓](#bonsai)).
+
+Run it yourself — one binary, no Python (model download ~7.2 GB):
+
+```bash
+git clone https://github.com/shifulegend/project-zero && cd project-zero && make release
+curl -fL -o models/Ternary-Bonsai-27B-Q2_0.gguf \
+  https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf/resolve/main/Ternary-Bonsai-27B-Q2_0.gguf
+./adaptive_ai_engine --model models/Ternary-Bonsai-27B-Q2_0.gguf \
+  --prompt "What is the capital of France?" --max-tokens 60 --temperature 0 --threads 4
+```
 
 ---
 
@@ -142,11 +158,13 @@ All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/s
 
 **Run it yourself and post your result:** [Discussion #3 — community benchmarks](https://github.com/shifulegend/project-zero/discussions/3)
 
+<a id="bonsai"></a>
+
 ### Qwen 3.5/3.6 (Ternary-Bonsai-27B, hybrid Gated-DeltaNet + GQA, Q2_0 ternary) — 4-core Xeon VM
 
 **What made this fast, specifically:**
 
-- **Format detection, not a documented spec.** Ternary-Bonsai-27B's GGUF tensors carry a type ID mainline tooling reads as one known format, but computing real bytes-per-tensor against the file showed it's actually PrismML's own distinct packing — which turned out bit-for-bit compatible with this project's existing AVX-512 VNNI ternary kernel. Connecting the two took Q2_0 matmul from ~1% of this host's DRAM bandwidth ceiling to **~29x faster** ([`mistakes.md`](docs/ai/mistakes.md)).
+- **Format detection, not a documented spec.** Ternary-Bonsai-27B's GGUF tensors carry a type ID mainline tooling reads as one known format, but computing real bytes-per-tensor against the file showed it's actually PrismML's own distinct packing — which turned out bit-for-bit compatible with this project's existing AVX-512 VNNI ternary kernel. Connecting the two made Q2_0 matmul **~29x faster** end-to-end (0.11 → 3.24 tok/s, measured A/B on the same host; [`mistakes.md`](docs/ai/mistakes.md)).
 - **Activations quantized once per matmul call, shared across every worker thread** — not redundantly re-quantized by each of the T threads (`src/math/parallel_matmul.c`).
 - **A real ISA-dispatch bug, not just a fallback path.** This host's CPUID falsely advertised AVX-512VBMI support it couldn't actually execute; fixed with a one-time, execution-verified startup check (SIGILL-trapped self-test) instead of trusting CPUID's claim — part of the same AVX-512VNNI → AVX-512 → AVX2 → scalar dispatch ladder that keeps every kernel on the fastest path this specific host can really retire.
 - **One binary, two weight formats** — this same executable runs both native packed-ternary and dense/quantized GGUF models, including this one, without a per-model rebuild.
@@ -177,7 +195,17 @@ All 8 screenshots (t=1..4 × 2 engines): [`benchmark_results/qwen35_ternary_bons
 
 **Note on the PZ screenshots above:** the original captures (2026-07-16) were taken before a startup-banner display fix and two capture-tool bugs were found. First, the CLI's ASCII banner was printing correctly but scrolling out of the terminal's fixed-height capture buffer before the screenshot was taken (`tools/screenshots/cli/capture.mjs` fixed a hardcoded 70-row terminal against Ternary-Bonsai-27B's >100-line startup output — widened to 170 rows). Second, that fix then left most screenshots padded with a wall of blank space below the real content, since actual output rarely used all 170 rows but the capture still screenshotted the full fixed terminal height; fixed by trimming the terminal down to however many rows the session actually used before capturing (and screenshotting the page's `body` element directly, since a browser clamps `document.documentElement.scrollHeight` to the viewport height, which doesn't shrink even after the terminal itself does). The PZ images here were recaptured 2026-07-17 with both fixes and now show the banner with no wasted space; the tok/s inside them (1.07 at t=4, 0.31 at t=1) is lower than the 2.74/0.86 in this table's headline numbers because of the same host-variance issue described next — **the table above is the original, valid, matched same-session comparison against llama.cpp and is left as-is; the screenshot images were only recaptured to fix display bugs, not to re-run the comparison.**
 
-**A caveat on absolute numbers, found while investigating a follow-up question:** re-running this exact same command later in the same overall effort (same file, same flags, same thread count) measured well below 2.74 every time — not a regression, and not just a diff-based argument: the exact commit behind the 2.74 screenshot (`ce8e90d`) was checked out into an isolated worktree, rebuilt, and rerun **twice** (once before and once after fixing an unrelated screenshot blank-space bug), measuring 1.40 then 1.02 tok/s — two different numbers, same conclusion. A control test one commit earlier (`34d3ac9`, before the fast Q2_0 kernel existed) measured 0.12 then 0.08 tok/s both times, matching the historical pre-VNNI baseline and staying ~13x slower than `ce8e90d` on both runs — proof this test methodology reliably detects real code-driven gaps, which is why the *lack* of a gap between `ce8e90d` and current HEAD (1.08 then 0.95 tok/s across the same two rounds) is meaningful rather than noise. Screenshots: [`commit_bisect_ce8e90d_1.02toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_ce8e90d_1.02toks.png) · [`commit_bisect_34d3ac9_0.08toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_34d3ac9_0.08toks.png) · [`commit_bisect_HEAD_0.95toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_HEAD_0.95toks.png). Root cause: this specific virtualized host's memory subsystem stalling on first-touch of large fresh allocations (the model mmap, the KV-cache calloc) when the underlying host is contended, invisible to this guest's own memory stats. Full evidence chain in [`docs/ai/mistakes.md`](docs/ai/mistakes.md). Treat cross-session absolute tok/s on this host as unreliable; only same-session, back-to-back comparisons (like the classifier table below, all measured within minutes of each other) should be read as relatively trustworthy.
+**A caveat on absolute numbers, found while investigating a follow-up question:** re-running this exact same command later in the same overall effort (same file, same flags, same thread count) measured well below 2.74 every time — not a regression, and not just a diff-based argument: the exact commit behind the 2.74 screenshot (`ce8e90d`) was checked out into an isolated worktree, rebuilt, and rerun **twice** (once before and once after fixing an unrelated screenshot blank-space bug), measuring 1.40 then 1.02 tok/s — two different numbers, same conclusion. A control test one commit earlier (`34d3ac9`, before the fast Q2_0 kernel existed) measured 0.12 then 0.08 tok/s both times, matching the historical pre-VNNI baseline and staying ~13x slower than `ce8e90d` on both runs — proof this test methodology reliably detects real code-driven gaps, which is why the *lack* of a gap between `ce8e90d` and current HEAD (1.08 then 0.95 tok/s across the same two rounds) is meaningful rather than noise. Screenshots: [`commit_bisect_ce8e90d_1.02toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_ce8e90d_1.02toks.png) · [`commit_bisect_34d3ac9_0.08toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_34d3ac9_0.08toks.png) · [`commit_bisect_HEAD_0.95toks.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/commit_bisect_HEAD_0.95toks.png). Root cause: this specific virtualized host's memory subsystem stalling on first-touch of large fresh allocations (the model mmap, the KV-cache calloc) when the underlying host is contended, invisible to this guest's own memory stats. Full evidence chain in [`docs/ai/mistakes.md`](docs/ai/mistakes.md). Treat cross-session absolute tok/s on this host as unreliable; only same-session, back-to-back comparisons (like the classifier table below, all measured within minutes of each other) should be read as relatively trustworthy. Consolidated root-cause analysis with the full evidence chain and timeline: [`docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md`](docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md). Two further corrections from that investigation, both now fixed in the engine: the "Data/token" and "Ceiling" figures visible in these screenshots were computed from hardcoded BitNet-2B constants (~6x too optimistic for this 27B model), **and** the "DRAM bandwidth (measured)" figures were ~3x too low (a probe accounting bug: three read passes timed, one pass of bytes counted). The engine now reports model-adjusted data/token after load and measures bandwidth correctly (same host: 12.0 → 41.2 GB/s). Honest ceiling for this model on these hosts: ~6-7 tok/s. Full spec and audit: [`docs/architecture/CEILING_CALCULATION.md`](docs/architecture/CEILING_CALCULATION.md).
+
+**Full 3-axis sweep vs the PrismML fork (2026-07-18):** 18 sequential same-session runs (threads × SIMD × classifier for project-zero; threads for the fork; 4 interleaved drift sentinels) — project-zero leads **4.2–4.8x at every thread count** (t4: 2.97 vs 0.70 tok/s).
+
+<p align="center">
+  <img src="benchmark_results/sweep3_2026-07-18/comparison_infographic.png" width="860" alt="Benchmark telemetry infographic: project-zero vs PrismML llama.cpp fork on Ternary-Bonsai-27B — 4.2-4.8x faster at every thread count, plus project-zero-only SIMD and classifier axes, bracketed by drift sentinels">
+</p>
+
+Raw terminal screenshots + raw pty byte streams for every run: [`benchmark_results/sweep3_2026-07-18/`](benchmark_results/sweep3_2026-07-18/) · interactive version of this chart: [`comparison.html`](benchmark_results/sweep3_2026-07-18/comparison.html).
+
+**Kernel update (2026-07-17):** restructuring the Q2_0 VNNI row dot (per-row vector accumulator instead of a per-block horizontal reduction, F16C scale decode) lifted this model from 2.74/2.80 to **3.56/3.54 tok/s (+28%)** in an interleaved same-session A/B on a 4-core Xeon VM, with token-identical greedy output — the new number beats the original 2.74 headline above on a *weaker* host class. Micro-benchmark (`make bench-q2`): 1.32-1.68x per shape, largest on the 248320×5120 LM head.
 
 **Classifier precision (auto / BF16 / INT8 / INT4), at the confirmed-best 4 threads:**
 

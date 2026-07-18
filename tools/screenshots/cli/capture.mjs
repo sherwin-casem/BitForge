@@ -86,6 +86,17 @@ async function main() {
 
   const raw = readFileSync(rawLogPath);
 
+  // Optional: persist the raw pty byte stream next to the screenshot so
+  // benchmark sweeps can extract numbers ([gen] tok/s, hardware profile)
+  // from the exact bytes the screenshot renders, instead of re-running the
+  // command outside a TTY (which would suppress banner/color and change
+  // what the screenshot shows). Set PZ_CAPTURE_RAW_OUT to a file path.
+  // (2026-07-17, added for the 3-axis comparison sweep.)
+  if (process.env.PZ_CAPTURE_RAW_OUT) {
+    const { copyFileSync } = await import('fs');
+    copyFileSync(rawLogPath, process.env.PZ_CAPTURE_RAW_OUT);
+  }
+
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 900, height: 1200 } });
   const rowsOverride = process.env.PZ_CAPTURE_ROWS;

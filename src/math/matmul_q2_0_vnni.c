@@ -54,6 +54,14 @@
 #define TN_Q2_0V_MAX_N      20480
 #define TN_Q2_0V_MAX_BLOCKS (TN_Q2_0V_MAX_N / Q2_0V_BLOCK)
 
+/* NOTE (2026-07-17, negative result): a "run inline below 64 output rows"
+ * dispatch threshold was tried here (targeting DeltaNet's 48-row beta/alpha
+ * projections, 96 pool dispatches/token) and REVERTED — an interleaved
+ * end-to-end A/B measured it slightly SLOWER both rounds (3.24/3.31 vs
+ * 3.30/3.45 tok/s): this pool's dispatch is cheap enough that even a 48-row
+ * gemv benefits from the 4-way split. Don't re-add without measuring; see
+ * docs/architecture/CEILING_CALCULATION.md §7. */
+
 #define TN_PREFETCH_ROWS 8
 
 /* Prefetch every 64-byte cache line of the target row — mirrors
@@ -86,9 +94,18 @@ static inline float q2_0v_f16_to_f32(uint16_t h) {
  * codes from 16 bytes). Returns the un-descaled-by-act_scale total; the
  * caller multiplies by act_scale once, since it's the same constant for
  * every block of every row in this matmul call.
+ *
+ * Reference variant (2026-07-17): this was the production kernel until the
+ * optimized variant below replaced it. Kept compiled (a) as the baseline
+ * leg of tools/bench_q2_0's in-binary A/B, so kernel comparisons are immune
+ * to run-to-run host drift on virtualized benchmark hosts, and (b) as an
+ * independent same-math implementation for correctness cross-checks. Its
+ * two known inefficiencies, deliberately preserved: a full cross-lane
+ * _mm512_reduce_add_epi32 per 128-element block, and a branchy scalar
+ * fp16->f32 scale conversion per block.
  */
-static float dot_q2_0_row_vnni(const uint8_t *row_q2_0, const int8_t *q_x,
-                                const int32_t *sum_qx_blocks, int n_blocks) {
+static float dot_q2_0_row_vnni_ref(const uint8_t *row_q2_0, const int8_t *q_x,
+                                    const int32_t *sum_qx_blocks, int n_blocks) {
     float total = 0.0f;
 
     for (int b = 0; b < n_blocks; b++) {
@@ -115,6 +132,50 @@ static float dot_q2_0_row_vnni(const uint8_t *row_q2_0, const int8_t *q_x,
     return total;
 }
 
+/*
+ * Optimized row dot (2026-07-17): same math as the _ref variant, two
+ * structural fixes (docs/architecture/CEILING_CALCULATION.md §7 option A):
+ *
+ * A1 — no per-block horizontal reduce. The 16 int32 lane-partials from the
+ *   two dpbusds are exact (each lane accumulates 8 products bounded by
+ *   3*127, far below float's 2^24 integer-exact range), so scaling them by
+ *   the block's d and FMA-ing into a per-row float vector accumulator gives
+ *   sum(acc)*d without ever collapsing lanes; one _mm512_reduce_add_ps per
+ *   ROW replaces one _mm512_reduce_add_epi32 per BLOCK (40 for dim=5120).
+ *   The w_enc bias correction (-sum_qx*d per block) cannot ride in the
+ *   vector accumulator (it's a per-block scalar), so it accumulates in a
+ *   separate scalar FMA chain and is subtracted after the final reduce.
+ *
+ * A2 — F16C hardware fp16->f32 for the block scale instead of the branchy
+ *   scalar bit-twiddle (identical IEEE semantics incl. subnormals/inf).
+ */
+static float dot_q2_0_row_vnni(const uint8_t *row_q2_0, const int8_t *q_x,
+                                const int32_t *sum_qx_blocks, int n_blocks) {
+    __m512 accf = _mm512_setzero_ps();
+    float corr = 0.0f;
+
+    for (int b = 0; b < n_blocks; b++) {
+        const uint8_t *blk = row_q2_0 + (size_t)b * Q2_0V_BYTES;
+        uint16_t d_bits; memcpy(&d_bits, blk, 2);
+        float d = _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128((int)d_bits)));
+        const uint8_t *qs = blk + 2;                       /* 32 bytes, 128 codes */
+        const int8_t *qxb = q_x + (size_t)b * Q2_0V_BLOCK;
+
+        __m512i wenc0 = tn_unpack64_to_wenc_u8(qs);
+        __m512i wenc1 = tn_unpack64_to_wenc_u8(qs + 16);
+        __m512i qxv0  = _mm512_loadu_si512((const void *)qxb);
+        __m512i qxv1  = _mm512_loadu_si512((const void *)(qxb + 64));
+
+        __m512i acc = _mm512_dpbusds_epi32(_mm512_setzero_si512(), wenc0, qxv0);
+        acc = _mm512_dpbusds_epi32(acc, wenc1, qxv1);
+
+        accf = _mm512_fmadd_ps(_mm512_cvtepi32_ps(acc), _mm512_set1_ps(d), accf);
+        corr += (float)sum_qx_blocks[b] * d;
+    }
+
+    return _mm512_reduce_add_ps(accf) - corr;
+}
+
 typedef struct {
     float         *out;
     const int8_t  *q_x;
@@ -123,18 +184,34 @@ typedef struct {
     const uint8_t *w;
     int            n_blocks;
     size_t         row_bytes;
+    int            use_ref;   /* 1 = benchmark-baseline row dot (see above) */
 } MatmulQ2_0VnniArgs;
 
 static void matmul_q2_0_vnni_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     MatmulQ2_0VnniArgs *a = (MatmulQ2_0VnniArgs *)arg;
-    for (int i = start; i < end; i++) {
-        if (i + TN_PREFETCH_ROWS < end)
-            Q2_0V_PREFETCH_ROW_ALL(a->w + (size_t)(i + TN_PREFETCH_ROWS) * a->row_bytes,
-                                    a->row_bytes, _MM_HINT_T1);
-        float total = dot_q2_0_row_vnni(a->w + (size_t)i * a->row_bytes, a->q_x,
-                                         a->sum_qx_blocks, a->n_blocks);
-        a->out[i] = total * a->act_scale;
+    /* Branch once per task, not per row — and keep two separate loops rather
+     * than a function pointer, so each (static, single-call-site) row dot
+     * still inlines into its loop. An indirect call would deoptimize the
+     * exact code path this dual-variant setup exists to measure. */
+    if (a->use_ref) {
+        for (int i = start; i < end; i++) {
+            if (i + TN_PREFETCH_ROWS < end)
+                Q2_0V_PREFETCH_ROW_ALL(a->w + (size_t)(i + TN_PREFETCH_ROWS) * a->row_bytes,
+                                        a->row_bytes, _MM_HINT_T1);
+            float total = dot_q2_0_row_vnni_ref(a->w + (size_t)i * a->row_bytes, a->q_x,
+                                                 a->sum_qx_blocks, a->n_blocks);
+            a->out[i] = total * a->act_scale;
+        }
+    } else {
+        for (int i = start; i < end; i++) {
+            if (i + TN_PREFETCH_ROWS < end)
+                Q2_0V_PREFETCH_ROW_ALL(a->w + (size_t)(i + TN_PREFETCH_ROWS) * a->row_bytes,
+                                        a->row_bytes, _MM_HINT_T1);
+            float total = dot_q2_0_row_vnni(a->w + (size_t)i * a->row_bytes, a->q_x,
+                                             a->sum_qx_blocks, a->n_blocks);
+            a->out[i] = total * a->act_scale;
+        }
     }
 }
 
@@ -144,8 +221,8 @@ static void matmul_q2_0_vnni_task(void *arg, int thread_id, int start, int end) 
  * 128, or larger than this file's stack-buffer ceiling (never happens for
  * this model's actual dims; see TN_Q2_0V_MAX_N above).
  */
-int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0,
-                               int n, int d, ThreadPool *tp) {
+static int matmul_q2_0_vnni_run(float *out, const float *x, const uint8_t *w_q2_0,
+                                 int n, int d, ThreadPool *tp, int use_ref) {
     if (n <= 0 || n % Q2_0V_BLOCK != 0 || n > TN_Q2_0V_MAX_N)
         return 0;
 
@@ -166,11 +243,24 @@ int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0,
     MatmulQ2_0VnniArgs args = {
         .out = out, .q_x = q_x, .sum_qx_blocks = sum_qx_blocks,
         .act_scale = act_scale, .w = w_q2_0, .n_blocks = n_blocks,
-        .row_bytes = row_bytes,
+        .row_bytes = row_bytes, .use_ref = use_ref,
     };
     if (!tp) { matmul_q2_0_vnni_task(&args, 0, 0, d); return 1; }
     threadpool_dispatch(tp, matmul_q2_0_vnni_task, &args, d);
     return 1;
+}
+
+int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0,
+                               int n, int d, ThreadPool *tp) {
+    return matmul_q2_0_vnni_run(out, x, w_q2_0, n, d, tp, /*use_ref=*/0);
+}
+
+/* Benchmark baseline: the pre-2026-07-17 row dot, exported ONLY for
+ * tools/bench_q2_0's in-binary A/B and correctness cross-checks. Not part of
+ * the engine's dispatch — production always takes the optimized variant. */
+int parallel_matmul_q2_0_vnni_ref(float *out, const float *x, const uint8_t *w_q2_0,
+                                   int n, int d, ThreadPool *tp) {
+    return matmul_q2_0_vnni_run(out, x, w_q2_0, n, d, tp, /*use_ref=*/1);
 }
 
 /* ── Batched: k weight matrices, per-expert inputs (MoE) ─────────────────

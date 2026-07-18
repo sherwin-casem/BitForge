@@ -5,6 +5,156 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — Ceiling push: two optimizations implemented, measured, and REVERTED on evidence; plus a misleading KV-strategy line that had already corrupted a published bound
+- Summary: pushing from 59% toward the 6.0 tok/s ceiling, step-timing was first wired into the
+  qwen35 hybrid path (steps 4-12 + two new DeltaNet steps) per the "pinpoint before
+  optimizing" rule. Attribution: ~91% of per-token time in Q2_0 matmuls, DeltaNet scalar
+  recurrence 6.4%, everything else <3%. Two optimizations were then tried and **both failed
+  their A/B honestly**:
+  1. A3a wide non-VBMI unpack (512-bit SSE-algorithm-across-lanes + 4x4 lane transpose, ~3x
+     fewer unpack ops/code): bit-exact, but neutral-to-negative over 3 alternating on/off
+     rounds — the A1+A2 kernel is already load-bound at ~30-35 GB/s, so unpack compute was no
+     longer the bottleneck. The optimization targeted a regime (compute-bound) that A1+A2 had
+     already exited. Reverted.
+  2. Sub-64-row inline dispatch (skip the thread pool for DeltaNet's 48-row beta/alpha
+     projections, 96 dispatches/token): slightly SLOWER in both interleaved end-to-end rounds
+     (3.24/3.31 vs 3.30/3.45 tok/s) — the pool's dispatch is cheap enough that 48-row jobs
+     still profit from splitting; the "pool wake+join dominates tiny gemvs" assumption was
+     never measured before being coded. Reverted, warning comment left at the site.
+- Also fixed: the startup line printed "KV Strategy: Quantized I8" for qwen35 models whose
+  K/V caches are actually raw F32 (`q35_key_cache` is `float **`; the quantized-KV machinery
+  is not wired into that path). This had already propagated: CEILING_CALCULATION.md §3's KV
+  bound was computed from the printed "I8" (32 KB/pos) instead of the real F32 (128 KB/pos)
+  — corrected, ~8% of the weight stream at 4K ctx, ~40%+ near max context.
+- Detection: both reverts came from the measurement discipline itself (alternating-round
+  micro A/B; interleaved same-session end-to-end A/B), not from review; the KV line from the
+  hot-path exploration for this push.
+- Prevention rules: (1) an optimization designed against a bottleneck model must re-verify
+  that model still holds *after* the previous optimization landed — A1+A2 moved the kernel
+  from compute-bound to load-bound, silently invalidating A3a's premise; (2) "dispatch
+  overhead dominates small jobs" is a measurement, not an axiom — pool implementations vary
+  by orders of magnitude in wake cost; (3) a printed runtime-strategy string is a claim like
+  any other and needs verification before being used as an input to published arithmetic —
+  this file now contains two same-day entries (probe "measured" GB/s, KV "I8") where trusting
+  the engine's own output corrupted downstream analysis.
+
+### 2026-07-17 — Independent fresh-context review of the ceiling calculation: 3 new real defects found and fixed; core arithmetic independently confirmed
+- Summary: per user request, a clean-slate reviewer (no access to this session's derivations,
+  instructed to re-derive everything from source before reading the docs) audited the entire
+  ceiling calculation. It independently reproduced the per-token byte accounting to the byte
+  (6,827,406,400 B for Ternary-Bonsai-27B default), independently found BOTH pre-fix DRAM-probe
+  defects before being told of them, and surfaced defects this session had missed:
+  (1) `calibration.c` converted GB/s→MiB/s with ×1024 instead of ×(1e9/2^20)≈953.67 — every
+  printed classifier tok/s estimate ~7.4% high (rankings unaffected, common factor); (2) the
+  native (non-GGUF) branch never called `tn_hardware_profile_set_model_bytes()`, so any native
+  model that isn't exactly BitNet-2B kept the hardcoded 1149 MiB estimate — the same bug class
+  just fixed for GGUF, still live one branch over; (3) the fixed probe's DCE-defeat sink was
+  `+=`'d from all worker threads unsynchronized (benign result-wise, real data race). Also: a
+  main.c comment contradicting its own code (generic-GGUF embedding accounting), `bench_q2_0`
+  printing but not enforcing its correctness cross-check, a mixed-unit "1179 MB" arithmetic slip
+  in the doc, and the L3-heuristic comment calling a ceiling-raising cache credit a "LOWER
+  BOUND". All fixed same pass; full table in `docs/architecture/CEILING_CALCULATION.md` §8.
+- Detection: the review itself — specifically its independence (fresh context, derive-first
+  ordering), which is what made the ×1024 unit error and the missed native branch visible after
+  two authors (the original and this session) had each read past them.
+- Verification after fixes: gcc release 0 warnings, test suite 46/46, `make bench-q2` (hard
+  correctness gate now active) 1.45-1.57x, `make demo` golden ("Paris", SmolLM2 258 MB →
+  165.8 tok/s ceiling at 44.9 GB/s), 27B model run 3.81 tok/s (30 tok) at 40.3 GB/s measured /
+  5.9 ceiling; clang standalone compile-checks of all changed TUs clean. Native-branch
+  set_model_bytes is compile+logic-verified only (no native .bin model in this container) —
+  flagged, not hidden.
+- Prevention rule: for any numeric pipeline that survived one author and one later auditor,
+  assume unit-conversion factors and branch-coverage symmetry ("was the same fix applied to
+  every parallel branch?") are still unchecked until someone re-derives the numbers without
+  seeing the originals. A reviewer who must produce the figures independently before comparing
+  catches classes of error that diff-reading reviewers structurally cannot.
+
+### 2026-07-17 — DRAM bandwidth probe under-measured ~3.4x (accounting bug + serialized reads); every historical "measured GB/s" and ceiling-utilization claim was wrong
+- Summary: while implementing the planned probe improvement (serialized volatile reads →
+  multi-accumulator streaming), reading the outer timing loop revealed a second, larger bug:
+  `bw_thread_fn` ran its **3 read passes inside one timed create/join round**, while the
+  caller's aggregate divided **one** pass worth of bytes by the wall time of all three — a
+  systematic ~3x under-measurement. The per-thread bytes/elapsed figures (correctly accounted)
+  were computed and then discarded in favor of the broken aggregate.
+- Fix: threads now run exactly one pass per round (the caller's existing 3-round best-of loop
+  provides repetition), and each pass reads every byte via 8 independent 64-bit accumulator
+  chains instead of one volatile char per 64-byte line (volatile scalar chains can't keep line
+  fills in flight). Same host, same session: **12.0 → 41.2 GB/s**. Cross-checks that had
+  already exposed the discrepancy: memcpy ~22 GB/s effective (≈44 GB/s bus traffic), the Q2_0
+  kernel itself streaming 29 GB/s from a >L3 buffer, and — in hindsight the loudest tell —
+  SmolLM2 measuring 56.5 tok/s against a "44.1 tok/s at 100% BW" ceiling, a physical
+  impossibility that the in-code comment had rationalized as "prefetch effectiveness" and this
+  session initially waved through as "probe bias" without quantifying it.
+- Consequences: every "DRAM bandwidth (measured)" ever printed (16.0, 14.0-17.3, 12.2, 10.9
+  GB/s...) is ~3x low; every ceiling and utilization percentage derived from one is wrong,
+  including the BitNet-era "95% of ceiling" claims (true utilization was ~3x lower) and this
+  same day's RCA-addendum claim that host A's 2.74 tok/s was "at the bandwidth wall" (it was at
+  ~40% of true bandwidth). Corrected in `docs/architecture/CEILING_CALCULATION.md` (spec +
+  audit), the RCA addendum, and the README. A/B comparisons and relative claims are unaffected.
+- Related result recorded here for cross-reference: with the honest ceiling in place, the Q2_0
+  VNNI row-dot restructure (per-row float vector accumulator replacing a per-128-element-block
+  `_mm512_reduce_add_epi32`, F16C scale decode; frozen `_ref` variant kept for in-binary A/B via
+  new `tools/bench_q2_0`) measured 1.32-1.68x per shape and **2.74/2.80 → 3.56/3.54 tok/s
+  (+28%) end-to-end** on the real 27B model, interleaved same-session, token-identical greedy
+  output, `TN_STEP_TIMING=1` attribution (Dense FFN 17.7→13.1 s, LM head 1.19→0.83 s per 61
+  tokens). Current standing: 3.56 measured vs 6.0 ceiling = 59% utilization.
+- Affected files: `src/core/hardware_profile.c` (probe), `src/math/matmul_q2_0_vnni.c` +
+  `include/math/matmul_q2_0.h` + `Makefile`/`CMakeLists.txt` (`-mf16c`) + `tools/bench_q2_0.c`
+  (kernel + bench), docs as above.
+- Detection: code reading during a planned adjacent improvement — not by any test; nothing
+  asserts on probe output. The "engine exceeds its own 100%-of-bandwidth ceiling" observation
+  had been visible in outputs for weeks.
+- Prevention rule: when a benchmark's own reported number is *physically impossible* relative
+  to another trusted measurement (throughput above "100% of bandwidth"), stop and reconcile the
+  two before publishing either — "the probe is conservative" is a hypothesis to quantify, not a
+  caveat to file away. For any timed loop, assert the bytes-counted and the passes-timed come
+  from the same code path; best-of-N logic belongs in exactly one layer.
+
+### 2026-07-17 — Hardware profiler's Data/token + tok/s ceiling were hardcoded BitNet-2B constants, wrong for every other model (~6x-overstated ceiling for Ternary-Bonsai-27B)
+- Summary: while pinpointing what it would take to "reach the tok/s ceiling" on the current host,
+  the ceiling itself failed an arithmetic sanity check: a dense 27B model at 2.125 bits/weight
+  must stream ~6.8 GB of weights per token (7.16 GB file minus the embedding, which is read one
+  row per token), yet the profiler printed "Data/token: 1149 MB" and "Ceiling: 10.4–17.1 tok/s".
+- Root cause: `hardware_profile.c` computes `weight_bytes_per_tok` from compile-time
+  `MODEL_TERNARY_BYTES`/`MODEL_VOCAB`/`MODEL_DIM` constants hardcoded for BitNet-b1.58-2B
+  (522 MB + a 128256×2560 BF16 classifier ≈ 1149 MB), because `tn_hardware_profile_init()` runs
+  before the model file is opened. Nothing ever corrected it post-load — a direct violation of
+  the project's own "model shape from GGUF metadata, never hardcoded" rule that survived because
+  the constants were right for the one model the profiler was written against. It also *under*-
+  stated small models (SmolLM2-135M is ~258 MB/token, not 1149).
+- Consequences for published analysis: every "X% of ceiling" claim for Ternary-Bonsai-27B used a
+  ~6x-inflated denominator. Corrected: the real bandwidth ceiling at host A's measured 16 GB/s is
+  ~2.3 tok/s — the recorded 2.74 tok/s means the engine was already at/above the *calibrated*
+  bandwidth (~18.6 GB/s effective; the calibration's streaming probe under-measures real
+  achievable bandwidth — same-day cross-check: this session's host calibrated 12.0 GB/s while a
+  simple 512 MB memcpy loop measured ~22 GB/s effective). Host B runs (~1.0–1.24 tok/s ≈ 7–8.4
+  GB/s) sit at ~60–70% of the calibrated ceiling, so the realistic kernel-side headroom on that
+  host class is ~1.5–2x, not the 6–16x the old ceiling implied. The "29x Q2_0 kernel speedup" and
+  all A/B comparisons are unaffected (relative measurements).
+- Correction: new `tn_hardware_profile_set_model_bytes()` recomputes `weight_bytes_per_tok`,
+  `theoretical_ceiling`, `model_fits_l3`, and the summary from the real loaded model; `main.c`
+  calls it after GGUF weight load (file size minus embedding/head adjustments for Q2_0-native
+  models, honoring a materialized classifier; MoE still overcounts — TODO). The startup box now
+  labels its figure "(pre-load est.)" and a `[profile] Data/token (loaded model): ... -> ceiling
+  ...` line prints post-load. Native BitNet path keeps the (correct-for-it) constants.
+- Affected files: `src/core/hardware_profile.c` (setter + `rebuild_summary()` extraction +
+  relabel), `include/core/hardware_profile.h`, `src/cli/main.c`.
+- Detection: order-of-magnitude sanity check of the ceiling against model size during an RCA
+  follow-up — not by any test; nothing asserts on profiler output.
+- Verification: gcc release + full test suite green (46/46); clang release/debug build green
+  (clang `make test` remains blocked by this container's missing clang ASan runtime — known
+  environment gap, decision-log 2026-06-19). End-to-end: `make demo` (SmolLM2-135M GGUF) prints
+  the corrected `258 MB -> ceiling 44.1 tok/s at 12.0 GB/s` line with golden output ("The capital
+  of France is Paris.") intact. No test links `hardware_profile.c`'s new path, so the
+  sanitizer-instrumented suite adds no additional coverage of this change; the real-binary demo
+  run is the meaningful verification here.
+- Prevention rule: any printed *derived* performance number (ceiling, efficiency-vs-ceiling,
+  data-per-token) must be dimensional-analysis-checked against the actual artifact it describes
+  (model bytes × tokens × bandwidth) before being used as an optimization target or published —
+  a wrong denominator silently corrupts every percentage built on it. Startup-order constraints
+  ("we don't know the model yet") don't justify leaving the estimate uncorrected once the real
+  data exists; add a post-load update instead.
+
 ### 2026-07-17 — The row-count fix for the banner-scrolling bug introduced a new bug: huge blank space below short output
 - Summary: user asked why the freshly-fixed screenshots (banner now visible) had so much blank
   space below the actual content. Root cause: the fix below widened the xterm.js terminal to a

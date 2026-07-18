@@ -283,6 +283,51 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
+
+        /* Correct the profiler's per-token traffic + ceiling with the real
+         * loaded model (2026-07-17): tn_hardware_profile_init() runs before
+         * the model file is opened and seeds Data/token with compile-time
+         * BitNet-2B constants (~1149 MB), overstating the ceiling ~6x for
+         * multi-GB GGUF models (docs/ai/mistakes.md). Accounting per class:
+         * Q2_0-native models subtract the embedding table (read one row per
+         * token, not streamed) and swap the raw Q2_0 LM head for the
+         * materialized classifier's bytes when one was explicitly requested.
+         * Generic GGUF uses the raw file size — an upper bound that still
+         * bills the full embedding table, since its tensor format (and thus
+         * byte size) isn't known generically here; tight for tied-embedding
+         * models, conservative otherwise. MoE models overcount (all experts,
+         * not just routed) — TODO: subtract inactive-expert bytes via
+         * MoEConfig. */
+        {
+            double per_tok = (double)mf.size;
+            double cls_bytes = 0.0;
+            const TnHardwareProfile *hp_m = tn_hardware_profile_get();
+            if (w.q35_is_q2_0_model) {
+                double q2_row = (double)p.vocab_size * p.dim * (34.0 / 128.0);
+                cls_bytes = q2_row; /* zero-copy raw Q2_0 head (default) */
+                if (hp_m && hp_m->classifier_explicit) {
+                    switch (hp_m->classifier_fmt) {
+                    case TN_CLS_INT4:
+                        cls_bytes = (double)p.vocab_size * p.dim * 0.5; break;
+                    case TN_CLS_INT8:
+                        cls_bytes = (double)p.vocab_size * p.dim;       break;
+                    default:
+                        cls_bytes = (double)p.vocab_size * p.dim * 2.0; break;
+                    }
+                }
+                /* drop embedding (one row/token) + in-file head, add the
+                 * head actually used */
+                per_tok -= 2.0 * q2_row;
+                per_tok += cls_bytes;
+            }
+            tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
+            if (hp_m) {
+                printf("[profile] Data/token (loaded model): %.0f MB -> "
+                       "ceiling %.1f tok/s at %.1f GB/s\n",
+                       per_tok / (1024.0 * 1024.0),
+                       hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
+            }
+        }
     } else {
         printf("Model format: native ternary\n");
 
@@ -350,6 +395,31 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
+
+        /* Native-format twin of the GGUF set_model_bytes call above
+         * (2026-07-17, independent-review finding: without this, any native
+         * model that isn't exactly BitNet-2B kept the hardcoded pre-load
+         * estimate forever). Per-token traffic = ternary layers + norms
+         * (weight data minus the BF16 embedding table, which is read one
+         * row per token) + the classifier at its selected precision (the
+         * classifier is derived from that embedding: BF16 = full table,
+         * INT8/INT4 = half/quarter). Native MoE (scale_mode==2) overcounts
+         * inactive experts here — same TODO as the GGUF branch. */
+        {
+            double embed_bytes = (double)p.vocab_size * p.dim * 2.0;
+            const TnHardwareProfile *hp_n = tn_hardware_profile_get();
+            double cls_bytes = embed_bytes; /* BF16 default */
+            if (hp_n && hp_n->classifier_fmt == TN_CLS_INT8) cls_bytes = embed_bytes / 2.0;
+            if (hp_n && hp_n->classifier_fmt == TN_CLS_INT4) cls_bytes = embed_bytes / 4.0;
+            double per_tok = ((double)data_size - embed_bytes) + cls_bytes;
+            tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
+            if (hp_n && per_tok > 0.0) {
+                printf("[profile] Data/token (loaded model): %.0f MB -> "
+                       "ceiling %.1f tok/s at %.1f GB/s\n",
+                       per_tok / (1024.0 * 1024.0),
+                       hp_n->theoretical_ceiling, hp_n->measured_bw_gbps);
+            }
+        }
     }
 
     tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
@@ -364,8 +434,21 @@ int main(int argc, char **argv) {
         tn_i64 post_load_ram = tn_get_free_ram();
         KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram);
         p.seq_len = kv_res.max_seq_len;
-        printf("KV Strategy: %s, max context: %d tokens\n",
-               kv_strategy_name(kv_res.strategy), p.seq_len);
+        /* Qwen35 hybrid models keep their own F32 K/V caches
+         * (q35_key_cache/q35_value_cache, only the full-attention layers) —
+         * the quantized-KV strategy machinery is not wired into that path,
+         * so printing e.g. "Quantized I8" for them misreported what actually
+         * happens (2026-07-17, found during the ceiling-gap attribution;
+         * see docs/ai/mistakes.md). The RAM-aware max-context clamp from
+         * select_kv_strategy() still applies either way. */
+        if (mc.has_linear_attn) {
+            printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
+                   "strategy not wired in), max context: %d tokens\n",
+                   p.seq_len);
+        } else {
+            printf("KV Strategy: %s, max context: %d tokens\n",
+                   kv_strategy_name(kv_res.strategy), p.seq_len);
+        }
     }
 
     /* Setup RunState */
