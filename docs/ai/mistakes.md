@@ -5,6 +5,39 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-17.
 
+### 2026-07-17 — Ceiling push: two optimizations implemented, measured, and REVERTED on evidence; plus a misleading KV-strategy line that had already corrupted a published bound
+- Summary: pushing from 59% toward the 6.0 tok/s ceiling, step-timing was first wired into the
+  qwen35 hybrid path (steps 4-12 + two new DeltaNet steps) per the "pinpoint before
+  optimizing" rule. Attribution: ~91% of per-token time in Q2_0 matmuls, DeltaNet scalar
+  recurrence 6.4%, everything else <3%. Two optimizations were then tried and **both failed
+  their A/B honestly**:
+  1. A3a wide non-VBMI unpack (512-bit SSE-algorithm-across-lanes + 4x4 lane transpose, ~3x
+     fewer unpack ops/code): bit-exact, but neutral-to-negative over 3 alternating on/off
+     rounds — the A1+A2 kernel is already load-bound at ~30-35 GB/s, so unpack compute was no
+     longer the bottleneck. The optimization targeted a regime (compute-bound) that A1+A2 had
+     already exited. Reverted.
+  2. Sub-64-row inline dispatch (skip the thread pool for DeltaNet's 48-row beta/alpha
+     projections, 96 dispatches/token): slightly SLOWER in both interleaved end-to-end rounds
+     (3.24/3.31 vs 3.30/3.45 tok/s) — the pool's dispatch is cheap enough that 48-row jobs
+     still profit from splitting; the "pool wake+join dominates tiny gemvs" assumption was
+     never measured before being coded. Reverted, warning comment left at the site.
+- Also fixed: the startup line printed "KV Strategy: Quantized I8" for qwen35 models whose
+  K/V caches are actually raw F32 (`q35_key_cache` is `float **`; the quantized-KV machinery
+  is not wired into that path). This had already propagated: CEILING_CALCULATION.md §3's KV
+  bound was computed from the printed "I8" (32 KB/pos) instead of the real F32 (128 KB/pos)
+  — corrected, ~8% of the weight stream at 4K ctx, ~40%+ near max context.
+- Detection: both reverts came from the measurement discipline itself (alternating-round
+  micro A/B; interleaved same-session end-to-end A/B), not from review; the KV line from the
+  hot-path exploration for this push.
+- Prevention rules: (1) an optimization designed against a bottleneck model must re-verify
+  that model still holds *after* the previous optimization landed — A1+A2 moved the kernel
+  from compute-bound to load-bound, silently invalidating A3a's premise; (2) "dispatch
+  overhead dominates small jobs" is a measurement, not an axiom — pool implementations vary
+  by orders of magnitude in wake cost; (3) a printed runtime-strategy string is a claim like
+  any other and needs verification before being used as an input to published arithmetic —
+  this file now contains two same-day entries (probe "measured" GB/s, KV "I8") where trusting
+  the engine's own output corrupted downstream analysis.
+
 ### 2026-07-17 — Independent fresh-context review of the ceiling calculation: 3 new real defects found and fixed; core arithmetic independently confirmed
 - Summary: per user request, a clean-slate reviewer (no access to this session's derivations,
   instructed to re-derive everything from source before reading the docs) audited the entire

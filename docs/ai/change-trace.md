@@ -3,6 +3,25 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-17.
 
+### 2026-07-17 — Ceiling push round 2: instrumentation + two evidence-based reverts + KV-line fix
+- What: wired step timing into the qwen35 hybrid path (steps 4-12 + new DeltaNet steps 22/23);
+  attribution: ~91% Q2_0 matmul / 6.4% scalar recurrence / <3% rest. Tried and REVERTED on
+  measurement: A3a wide non-VBMI unpack (kernel is load-bound, not compute-bound — neutral)
+  and sub-64-row inline dispatch (pool splitting wins even at 48 rows — slightly negative).
+  Fixed the "KV Strategy: Quantized I8" line for qwen35 (F32 reality) and the ceiling doc's
+  KV bound it had corrupted (32 → 128 KB/pos). Standing result unchanged: 3.56 tok/s vs 6.0
+  ceiling (59%); doc now states that materially exceeding ~60% single-stream requires
+  batched/speculative decode, not more kernel tuning.
+- Why: user asked to aim for the ceiling; both negative results are recorded per the plan's
+  "a documented dead end is a deliverable" rule (full data in CEILING_CALCULATION.md §7,
+  lessons in mistakes.md).
+- Verification: gcc release 0 warnings, test_q2_0_matmul 35/35 after each change and after
+  each revert; interleaved same-session end-to-end A/Bs for every perf-relevant decision.
+- Areas: `src/transformer/qwen35_attention.c`, `include/core/step_timing.h`,
+  `src/core/step_timing.c`, `src/math/matmul_q2_0_vnni.c` (net: comment only),
+  `src/cli/main.c` (KV line), `docs/architecture/CEILING_CALCULATION.md`, `docs/ai/*`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
 ### 2026-07-17 — Ceiling spec + probe fix (~3x) + Q2_0 kernel optimization (+28% end-to-end)
 - What: (1) `docs/architecture/CEILING_CALCULATION.md` — full spec/audit of the tok/s ceiling
   (probe methodology, 4 computation sites, per-model byte accounting, error bounds, bridging

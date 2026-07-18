@@ -160,10 +160,19 @@ Current state on this host for Ternary-Bonsai-27B, after this pass: **3.56 tok/s
   DRAM traffic. **Step-timing attribution (new DeltaNet steps 22/23)** puts ~91% of
   per-token time in Q2_0 matmuls (FFN 60%, projections 27%, LM head 4%), DeltaNet scalar
   recurrence at 6.4%, everything else <3% — so with the kernel near its practical
-  bandwidth wall, the remaining end-to-end gap is dispatch/serial overhead, not kernel
-  math. One targeted fix from that: sub-64-row gemvs (DeltaNet's beta/alpha, 96 pool
-  dispatches per token for ~5 µs of work each) now run inline instead of paying pool
-  wake+join. **Baseline-vs-A1+A2 results** —
+  bandwidth wall, the remaining end-to-end gap is distributed overhead, not kernel math.
+  **A second targeted experiment from that attribution also failed honestly:** running
+  sub-64-row gemvs inline (DeltaNet's 48-row beta/alpha, 96 pool dispatches/token) measured
+  *slightly slower* in both rounds of an interleaved end-to-end A/B (3.24/3.31 vs 3.30/3.45
+  tok/s, identical output) — this thread pool's dispatch is cheap enough that even 48-row
+  jobs profit from the 4-way split; reverted, with a warning comment left at the site.
+  **Conclusion of the ceiling push:** A1+A2 (+28%) captured the available kernel win; the
+  verified standing is **3.56 tok/s vs the 6.0 ceiling (59%)**, and the remaining gap is
+  (a) the kernel's own ~75-85%-of-probe streaming efficiency — i.e. the probe's 41 GB/s is
+  itself optimistic for real mixed read/compute work, (b) the 6.4% scalar DeltaNet
+  recurrence, and (c) non-overlapped serial sections. Getting materially past ~60% needs
+  option E (batched/speculative decode), not more single-stream kernel tuning.
+  **Baseline-vs-A1+A2 results** —
   `tools/bench_q2_0` (both variants in one binary, host-drift-immune, 4 threads, medians of
   7 interleaved reps): attn 5120×5120 **1.32x**, ffn-down 17408×5120 **1.48x**, lm-head
   5120×248320 **1.68x** (17.3 → 29.0 GB/s), max output diff ~1e-6; `tests/test_q2_0_matmul`
