@@ -3,6 +3,26 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-17.
 
+### 2026-07-18 — 3-axis comparison sweep vs PrismML llama.cpp fork, screenshots + infographic
+- What: 18 sequential same-session runs on Ternary-Bonsai-27B (60 tok, temp 0, one host):
+  project-zero threads 0.96/1.73/2.50 + four t4 sentinels 2.73-3.12; SIMD@t4
+  scalar/avx2/avx512f/vnni 2.82/3.05/2.88/3.08; classifier@t4 bf16/int8/int4 2.51/2.85/3.01.
+  Fork (prism branch b1-79697f2): t1-t4 0.2/0.4/0.6/0.7 — project-zero 4.2-4.8x ahead at
+  every thread count. Every run captured in a pty (screenshot PNG + raw bytes,
+  `benchmark_results/sweep3_2026-07-18/`); capture tool gained opt-in PZ_CAPTURE_RAW_OUT.
+  Infographic: `comparison.html` (published artifact) + `comparison_infographic.png`,
+  README-linked. This host was host-A-class (L3 260 MiB, 41.9 GB/s fixed-probe).
+- Fork gotchas recorded: rejects --no-conversation at runtime then loops printing prompts
+  forever on closed stdin (produced a 5 GB log); needs -c 4096 (default 262K ctx = ~15 GB KV
+  alloc, swap-thrash) and -st for one-shot runs.
+- Process lesson (mistakes-grade, recorded here): a background llama-cli with no timeout sat
+  swap-thrashing ~4 h while this session waited on its completion notification — long external
+  runs need explicit timeouts and liveness checks (RSS/etime), and their output must be
+  streamed/tee'd, never only piped to tail.
+- Areas: `benchmark_results/sweep3_2026-07-18/**`, `tools/screenshots/cli/capture.mjs`,
+  `README.md`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
 ### 2026-07-17 — Ceiling push round 2: instrumentation + two evidence-based reverts + KV-line fix
 - What: wired step timing into the qwen35 hybrid path (steps 4-12 + new DeltaNet steps 22/23);
   attribution: ~91% Q2_0 matmul / 6.4% scalar recurrence / <3% rest. Tried and REVERTED on
