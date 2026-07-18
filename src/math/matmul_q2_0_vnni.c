@@ -54,6 +54,15 @@
 #define TN_Q2_0V_MAX_N      20480
 #define TN_Q2_0V_MAX_BLOCKS (TN_Q2_0V_MAX_N / Q2_0V_BLOCK)
 
+/* Below this many output rows, run the task inline instead of dispatching
+ * to the thread pool: a d-row gemv at this model's dims costs well under
+ * the pool's wake+join latency, and Qwen35's DeltaNet layers issue two
+ * 48-row projections (beta/alpha) per layer per token — 96 pool dispatches
+ * per token for microscopic work (2026-07-17 step-timing attribution,
+ * docs/architecture/CEILING_CALCULATION.md §7). 64 keeps every real
+ * large matmul (min d = dim = 5120 here) on the parallel path. */
+#define TN_Q2_0V_MIN_PAR_ROWS 64
+
 #define TN_PREFETCH_ROWS 8
 
 /* Prefetch every 64-byte cache line of the target row — mirrors
@@ -237,7 +246,10 @@ static int matmul_q2_0_vnni_run(float *out, const float *x, const uint8_t *w_q2_
         .act_scale = act_scale, .w = w_q2_0, .n_blocks = n_blocks,
         .row_bytes = row_bytes, .use_ref = use_ref,
     };
-    if (!tp) { matmul_q2_0_vnni_task(&args, 0, 0, d); return 1; }
+    if (!tp || d < TN_Q2_0V_MIN_PAR_ROWS) {
+        matmul_q2_0_vnni_task(&args, 0, 0, d);
+        return 1;
+    }
     threadpool_dispatch(tp, matmul_q2_0_vnni_task, &args, d);
     return 1;
 }

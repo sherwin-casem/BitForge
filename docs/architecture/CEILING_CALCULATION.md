@@ -65,11 +65,15 @@ genuine upper bound again (SmolLM2: 56.5 measured vs ~152 ceiling, 37%).
 | MoE GGUF (DeepSeek-V2) | file size (over-counts: inactive experts are not read) | **TODO** — subtract inactive-expert bytes via `MoEConfig` |
 
 **Excluded on purpose: KV-cache traffic.** It is position-dependent, not constant per token.
-Worked bound for Ternary-Bonsai-27B (I8 KV, 16 full-attention layers of 64, 4 KV heads ×
-256 head_dim): 2·4·256·1 B × 16 layers = **32 KB per cached position**, so attention reads
-~134 MB/token at 4K context (~2% of the 6.8 GB weight stream) and ~713 MB/token at the 22K
-max context (~10%). The ceiling is thus slightly optimistic at long contexts; the DeltaNet
-layers hold O(1) state and add nothing that scales with position.
+Worked bound for Ternary-Bonsai-27B (16 full-attention layers of 64, 4 KV heads × 256
+head_dim, **F32** K/V — the startup line used to claim "Quantized I8", but the Qwen35 path
+keeps its own `float` caches and never wires in the quantized-KV machinery; reporting fixed
+2026-07-17): 2·4·256·4 B × 16 layers = **128 KB per cached position**, so attention reads
+~537 MB/token at 4K context (~8% of the 6.8 GB weight stream) and ~2.9 GB/token near the
+22K max context (~40%+ — the ceiling is materially optimistic at long contexts). The
+DeltaNet layers hold O(1) state and add nothing that scales with position. [An earlier
+revision of this section computed 32 KB/pos by trusting the "I8" startup line — a fresh
+reminder that printed strategy names need the same verification as any other claim.]
 
 ## 4. The four computation sites
 
@@ -143,8 +147,23 @@ Current state on this host for Ternary-Bonsai-27B, after this pass: **3.56 tok/s
   `_mm512_reduce_add_epi32` **per 128-element block** plus a branchy scalar fp16 scale
   conversion per block. A1: per-row float vector accumulator (`_mm512_cvtepi32_ps` + FMA by
   broadcast scale, one horizontal reduce per row, `Σ sum_qx·d` correction accumulated
-  scalar-side). A2: F16C scale decode. A3 (stretch, NOT yet done): wider AVX-512BW 2-bit
-  unpack for hosts without (working) VBMI; multi-row blocking. **Results** —
+  scalar-side). A2: F16C scale decode. **A3a — tried and REVERTED (negative result,
+  2026-07-17 ceiling push):** a 512-bit non-VBMI pair-unpack (SSE algorithm run on four
+  16-byte groups across zmm lanes + an 8-shuffle 4x4 lane transpose, ~3x fewer unpack ops
+  per code) was implemented, bit-exact (35/35 tests, identical maxdiff), and measured
+  neutral-to-slightly-negative across 3 alternating on/off rounds on all three shapes — the
+  A1+A2 kernel is already **load-bound at ~30-35 GB/s** (~75-85% of the probe's 41), so
+  cutting unpack compute buys nothing here; reverted per the keep-only-if-it-wins rule
+  (implementation preserved in git history). **A3b (multi-row blocking) — evaluated, not
+  pursued:** its premise (compute-bound kernel, activation reload cost) was falsified by
+  the A3a experiment; `q_x` is 5-17 KB and L1/L2-resident across rows, so blocking saves no
+  DRAM traffic. **Step-timing attribution (new DeltaNet steps 22/23)** puts ~91% of
+  per-token time in Q2_0 matmuls (FFN 60%, projections 27%, LM head 4%), DeltaNet scalar
+  recurrence at 6.4%, everything else <3% — so with the kernel near its practical
+  bandwidth wall, the remaining end-to-end gap is dispatch/serial overhead, not kernel
+  math. One targeted fix from that: sub-64-row gemvs (DeltaNet's beta/alpha, 96 pool
+  dispatches per token for ~5 µs of work each) now run inline instead of paying pool
+  wake+join. **Baseline-vs-A1+A2 results** —
   `tools/bench_q2_0` (both variants in one binary, host-drift-immune, 4 threads, medians of
   7 interleaved reps): attn 5120×5120 **1.32x**, ffn-down 17408×5120 **1.48x**, lm-head
   5120×248320 **1.68x** (17.3 → 29.0 GB/s), max output diff ~1e-6; `tests/test_q2_0_matmul`

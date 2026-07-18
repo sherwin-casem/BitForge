@@ -434,8 +434,21 @@ int main(int argc, char **argv) {
         tn_i64 post_load_ram = tn_get_free_ram();
         KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram);
         p.seq_len = kv_res.max_seq_len;
-        printf("KV Strategy: %s, max context: %d tokens\n",
-               kv_strategy_name(kv_res.strategy), p.seq_len);
+        /* Qwen35 hybrid models keep their own F32 K/V caches
+         * (q35_key_cache/q35_value_cache, only the full-attention layers) —
+         * the quantized-KV strategy machinery is not wired into that path,
+         * so printing e.g. "Quantized I8" for them misreported what actually
+         * happens (2026-07-17, found during the ceiling-gap attribution;
+         * see docs/ai/mistakes.md). The RAM-aware max-context clamp from
+         * select_kv_strategy() still applies either way. */
+        if (mc.has_linear_attn) {
+            printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
+                   "strategy not wired in), max context: %d tokens\n",
+                   p.seq_len);
+        } else {
+            printf("KV Strategy: %s, max context: %d tokens\n",
+                   kv_strategy_name(kv_res.strategy), p.seq_len);
+        }
     }
 
     /* Setup RunState */
