@@ -18,12 +18,28 @@
 
 ---
 
-Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`** — and dense GGUF models — no GPU, no Python, no ML framework.
+Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`**, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, and dense GGUF models — no GPU, no Python, no ML framework.
 
 - **Pure C, zero runtime deps** — `make release`, one executable, nothing else required
 - **3.5–8.3× faster than bitnet.cpp on i5-11300H** (INT4, t=1..8) · **1.33–1.80× faster on 4-core Xeon** ([third-party verified on OpenBenchmarking.org ↓](#benchmarks))
-- **35.79 tok/s on i5-11300H (INT4, 500 tokens, best-of-3)** · **36.25 tok/s on Xeon (PGO+LTO)** — 95% of DRAM bandwidth ceiling
+- **35.79 tok/s on i5-11300H (INT4, 500 tokens, best-of-3)** · **36.25 tok/s on Xeon (PGO+LTO)**
 - **One binary, two model families** — BitNet ternary and dense F16 GGUF, no per-model rebuild
+
+---
+
+### Bonsai-27B on ordinary x86 — faster than the vendor's own engine
+
+Project Zero runs [PrismML's Ternary-Bonsai-27B](https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf) (ternary Q2_0, 7.16 GB, Apache 2.0) **4.2–4.8× faster than PrismML's own llama.cpp fork at every thread count** on a plain 4-core AVX-512 Xeon VM — **2.97 vs 0.70 tok/s at t=4** (60-token greedy decode, identical file/prompt/session, drift-bracketed by sentinel runs; [18 raw terminal captures + methodology](benchmark_results/sweep3_2026-07-18/) · [full comparison ↓](#bonsai)).
+
+Run it yourself — one binary, no Python (model download ~7.2 GB):
+
+```bash
+git clone https://github.com/shifulegend/project-zero && cd project-zero && make release
+curl -fL -o models/Ternary-Bonsai-27B-Q2_0.gguf \
+  https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf/resolve/main/Ternary-Bonsai-27B-Q2_0.gguf
+./adaptive_ai_engine --model models/Ternary-Bonsai-27B-Q2_0.gguf \
+  --prompt "What is the capital of France?" --max-tokens 60 --temperature 0 --threads 4
+```
 
 ---
 
@@ -141,6 +157,8 @@ All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/s
 | [![Xeon result](docs/openbenchmarking_xeon_vs_bitnetcpp.png)](https://openbenchmarking.org/result/2606207-SHIF-PROJECT42) | [![i5 result](docs/openbenchmarking_i5_vs_llamacpp.png)](https://openbenchmarking.org/result/2606208-SHIF-PROJECT03) |
 
 **Run it yourself and post your result:** [Discussion #3 — community benchmarks](https://github.com/shifulegend/project-zero/discussions/3)
+
+<a id="bonsai"></a>
 
 ### Qwen 3.5/3.6 (Ternary-Bonsai-27B, hybrid Gated-DeltaNet + GQA, Q2_0 ternary) — 4-core Xeon VM
 

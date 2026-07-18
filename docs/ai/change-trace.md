@@ -3,6 +3,20 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-17.
 
+### 2026-07-18 — README front door: Bonsai-27B x86 comparison promoted to hero + quick start
+- What: added a hero block under the intro — the sweep3 headline claim (4.2-4.8x vs PrismML's
+  own fork, 2.97 vs 0.70 tok/s @ t4, config + drift caveat stated, links to captures and the
+  full section) with a copy-paste quick start (clone/build/curl model/run); intro line now
+  names the Bonsai result alongside the BitNet one; `#bonsai` anchor added. Also removed the
+  "95% of DRAM bandwidth ceiling" clause from the hero bullets — that figure predates the
+  2026-07-17 probe fix (bandwidth was measured ~3x low, so the utilization claim doesn't
+  survive re-derivation; see CEILING_CALCULATION.md §2/§5).
+- Why: the Bonsai comparison is the repo's strongest current, fully-documented result; the
+  README's own claim+proof rules (2026-06-20/21 decisions) require the hero to be the best
+  verifiable claim with config stated and no stale numbers.
+- Areas: `README.md`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
 ### 2026-07-18 — 3-axis comparison sweep vs PrismML llama.cpp fork, screenshots + infographic
 - What: 18 sequential same-session runs on Ternary-Bonsai-27B (60 tok, temp 0, one host):
   project-zero threads 0.96/1.73/2.50 + four t4 sentinels 2.73-3.12; SIMD@t4
