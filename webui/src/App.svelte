@@ -28,7 +28,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">&gt;_</span>
-      <span class="brand-name">project-zero</span>
+      <span class="brand-name">BitForge</span>
     </div>
     <div class="topbar-actions">
       <button class="icon-btn" on:click={() => (controlsOpen = !controlsOpen)} aria-expanded={controlsOpen} title="Sampling parameters">
