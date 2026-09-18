@@ -1,4 +1,4 @@
-# Project Zero — CPU LLM Inference Engine
+# BitForge — CPU-First BitNet & GGUF LLM Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
@@ -18,7 +18,9 @@
 
 ---
 
-Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`**, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, and dense GGUF models — no GPU, no Python, no ML framework.
+Project Zero is a CPU-first LLM inference engine for BitNet b1.58 ternary models, dense GGUF transformers, and routed MoE/MLA architectures. It delivers pure C, single-binary performance with AVX2/AVX-512/NEON dispatch, no GPU, no Python runtime dependency, and no ML framework overhead.
+
+It runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`**, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, and dense GGUF models.
 
 - **Pure C, zero runtime deps** — `make release`, one executable, nothing else required
 - **3.5–8.3× faster than bitnet.cpp on i5-11300H** (INT4, t=1..8) · **1.33–1.80× faster on 4-core Xeon** ([third-party verified on OpenBenchmarking.org ↓](#benchmarks))
