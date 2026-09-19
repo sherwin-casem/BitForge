@@ -155,7 +155,7 @@ At model load, sort and interleave expert weights so that any set of top-K activ
 
 The challenge with Q4_K: each "superblock" in Q4_K quantization contains 256 weights with a shared scale+offset. Repacking must preserve superblock boundaries or recompute scales. See `ggml_type_size(GGML_TYPE_Q4_K)` and the `block_q4_K` struct in ggml-quants.h for the layout.
 
-**Discussion with more context:** https://github.com/shifulegend/project-zero/discussions/1
+**Discussion with more context:** https://github.com/sherwin-casem/project-zero/discussions/1
 
 If you've worked on ggml Q4_K layout or llama.cpp's expert repacking, your input there would be extremely valuable.
 

@@ -9,10 +9,10 @@ abstract: >-
   tools, and RAG persistent memory. No GPU and no ML framework.
 type: software
 authors:
-  - alias: shifulegend
+  - alias: sherwin-casem
     name: "Project Zero Contributors"
 license: MIT
-repository-code: "https://github.com/shifulegend/project-zero"
+repository-code: "https://github.com/sherwin-casem/project-zero"
 keywords:
   - llm
   - inference

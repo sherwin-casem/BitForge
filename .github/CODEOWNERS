@@ -3,17 +3,17 @@
 # Order matters: the last matching pattern wins.
 
 # Default owner for everything in the repo.
-*                       @shifulegend
+*                       @sherwin-casem
 
 # Build + CI configuration.
-/Makefile               @shifulegend
-/CMakeLists.txt         @shifulegend
-/.github/               @shifulegend
+/Makefile               @sherwin-casem
+/CMakeLists.txt         @sherwin-casem
+/.github/               @sherwin-casem
 
 # Core engine hot paths (kernels, weight loading, transformer).
-/src/math/              @shifulegend
-/src/core/              @shifulegend
-/src/transformer/       @shifulegend
+/src/math/              @sherwin-casem
+/src/core/              @sherwin-casem
+/src/transformer/       @sherwin-casem
 
 # Project memory / AI-dev system (canonical docs).
-/docs/ai/               @shifulegend
+/docs/ai/               @sherwin-casem

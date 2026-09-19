@@ -1,6 +1,6 @@
 # PR #21 Review: K-6 LUT Ternary Kernel — Bug Fix & Benchmark Report
 
-**PR:** [shifulegend/project-zero#21](https://github.com/shifulegend/project-zero/pull/21) — adds a new
+**PR:** [sherwin-casem/project-zero#21](https://github.com/sherwin-casem/project-zero/pull/21) — adds a new
 5-trit-per-byte ("K-6 LUT") AVX-512BW ternary matmul kernel for BitNet-style models.
 **Reviewed:** 2026-07-04 &middot; **Fix commit:** `8a4905f` on `bench/lut-k6-20260627`
 **Test rig:** this session's sandbox — Intel Xeon Scalable (cloud vCPU), 4 cores, AVX-512 VNNI + AVX-512BW (see hardware table below).

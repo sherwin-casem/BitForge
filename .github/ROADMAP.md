@@ -116,7 +116,7 @@ Verified on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-S
 | Phase | Feature | Status | Notes |
 |-------|---------|--------|-------|
 | **34** | GGUF reader — metadata, tokenizer, tensor loading | ✅ | DeepSeek-V2-Lite-Chat Q4_K_S runs correctly |
-| **34-MoE** | MoE expert weight scatter — contiguous access at inference time | 🆘 **BLOCKING** | 13× behind llama.cpp. Root cause: non-contiguous DRAM offsets. [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) |
+| **34-MoE** | MoE expert weight scatter — contiguous access at inference time | 🆘 **BLOCKING** | 13× behind llama.cpp. Root cause: non-contiguous DRAM offsets. [Discussion #1](https://github.com/sherwin-casem/project-zero/discussions/1) |
 | **35** | GGUF MLA+MoE architecture router — deepseek2 tensor mapping, stacked expert slicing | ❌ | Fully specified in `IMPLEMENTATION_PLAN.md §35` |
 | **37.1** | Q2_K dequant | ✅ | Needed for DeepSeek-V2-Lite-Chat-Q2_K |
 | **37.2** | Q3_K dequant | ❌ | 256 elems, 110 bytes/block |
@@ -172,7 +172,7 @@ The two highest-impact contributions that unblock all MoE-related phases:
 
 **Fix:** Repack expert weights at model load time so the top-K experts for common activation patterns are physically contiguous. llama.cpp does this in `llama_model_load_internal()`. The challenge: preserving Q4_K superblock boundaries during the repack.
 
-**Discussion + full profiling data:** [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1)
+**Discussion + full profiling data:** [Discussion #1](https://github.com/sherwin-casem/project-zero/discussions/1)
 
 ### 2. Native Q4_K Matmul Kernel
 
@@ -184,7 +184,7 @@ The two highest-impact contributions that unblock all MoE-related phases:
 
 ## Community Benchmarks
 
-Run the engine on your hardware and add your result: [Discussion #3](https://github.com/shifulegend/project-zero/discussions/3)
+Run the engine on your hardware and add your result: [Discussion #3](https://github.com/sherwin-casem/project-zero/discussions/3)
 
 ---
 

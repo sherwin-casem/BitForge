@@ -4,11 +4,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: 💬 Questions & Discussion
-    url: https://github.com/shifulegend/project-zero/discussions
+    url: https://github.com/sherwin-casem/project-zero/discussions
     about: Ask usage questions, propose ideas, or discuss architecture here.
   - name: 🏁 Community Benchmark Challenge
-    url: https://github.com/shifulegend/project-zero/discussions/3
+    url: https://github.com/sherwin-casem/project-zero/discussions/3
     about: Run the engine on your hardware and share your tok/s result.
   - name: 🔐 Report a Security Vulnerability
-    url: https://github.com/shifulegend/project-zero/security/advisories/new
+    url: https://github.com/sherwin-casem/project-zero/security/advisories/new
     about: Please report vulnerabilities privately — do not open a public issue.
