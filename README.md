@@ -36,7 +36,7 @@ Project Zero runs [PrismML's Ternary-Bonsai-27B](https://huggingface.co/prism-ml
 Run it yourself — one binary, no Python (model download ~7.2 GB):
 
 ```bash
-git clone https://github.com/shifulegend/project-zero && cd project-zero && make release
+git clone https://github.com/sherwin-casem/project-zero && cd project-zero && make release
 curl -fL -o models/Ternary-Bonsai-27B-Q2_0.gguf \
   https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf/resolve/main/Ternary-Bonsai-27B-Q2_0.gguf
 ./adaptive_ai_engine --model models/Ternary-Bonsai-27B-Q2_0.gguf \
@@ -160,7 +160,7 @@ All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/s
 |---|---|
 | [![Xeon result](docs/openbenchmarking_xeon_vs_bitnetcpp.png)](https://openbenchmarking.org/result/2606207-SHIF-PROJECT42) | [![i5 result](docs/openbenchmarking_i5_vs_llamacpp.png)](https://openbenchmarking.org/result/2606208-SHIF-PROJECT03) |
 
-**Run it yourself and post your result:** [Discussion #3 — community benchmarks](https://github.com/shifulegend/project-zero/discussions/3)
+**Run it yourself and post your result:** [Discussion #3 — community benchmarks](https://github.com/sherwin-casem/project-zero/discussions/3)
 
 ### Community Baselines & Known Bottlenecks
 
@@ -356,7 +356,7 @@ Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) 
 **Option A — pre-built binary (Linux x86-64, no compiler needed):**
 
 ```bash
-wget https://github.com/shifulegend/project-zero/releases/download/v0.1.0/adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz
+wget https://github.com/sherwin-casem/project-zero/releases/download/v0.1.0/adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz
 tar xf adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz
 ./adaptive_ai_engine --model models/bitnet-b1.58-2B-4T.bin \
   --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
@@ -366,7 +366,7 @@ tar xf adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz
 **Option B — build from source (60 seconds):**
 
 ```bash
-git clone https://github.com/shifulegend/project-zero.git
+git clone https://github.com/sherwin-casem/project-zero.git
 cd project-zero
 make demo   # builds engine + downloads SmolLM2-135M + runs a test prompt
 ```
@@ -383,7 +383,7 @@ No GPU. No Python at runtime. No API key. GCC or Clang + `make` + `curl` — not
 
 > If you like my work or if it helped you, buy me a coffee or A100😉
 > 
-> [![Sponsor Nitika](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red)](https://github.com/sponsors/shifulegend)
+> [![Sponsor Nitika](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red)](https://github.com/sponsors/sherwin-casem)
 
 ## Help Wanted
 
@@ -393,10 +393,10 @@ Two open problems where outside expertise would make a real difference:
 |---|---|---|
 | **MoE expert weight repacking** | DeepSeek-V2-Lite runs at 1.90 tok/s — 7× behind `llama.cpp`. Top-K expert weights sit at non-contiguous GGUF offsets: **~86% L3 cache miss rate per token**. Fix: repack selected expert weights into contiguous memory at load time, matching llama.cpp's interleaved layout. | ≥ 9 tok/s |
 | **Native Q4_K matmul kernel** | Current dense-model path dequants Q4_K → F32 before multiply. A fused mixed-precision kernel would close the remaining gap to `llama.cpp` on dense 4-bit GGUF models. | — |
-| **Re-benchmark classifier INT8/INT4 throughput post-quality-fix** | `matmul_i4_task`/`matmul_i8_task` (`src/math/parallel_matmul.c`) were rewritten 2026-07-31 to fix a real quantization-quality gap (one scale per row → one scale per 32-element block with error-minimizing search — see `docs/ai/decision-log.md`, [GitHub issue #27](https://github.com/shifulegend/project-zero/issues/27)). That rewrite dropped the VNNI `dpbusds`/VBMI fast paths (their row-wide bias-correction trick doesn't hold once every block has its own scale) in favor of a portable per-block FMA path — the specific SSE-interleave-unpack throughput issue this row used to describe no longer applies to the current code, but the *net* throughput effect of the whole rewrite hasn't been re-measured against the historical sweep above. | Confirm INT8/INT4 throughput post-fix; a genuine multi-row/multi-block SIMD kernel (not full VNNI dpbusds, which the new per-block scaling structurally can't reuse) could recover some of the dropped throughput without regressing quality |
+| **Re-benchmark classifier INT8/INT4 throughput post-quality-fix** | `matmul_i4_task`/`matmul_i8_task` (`src/math/parallel_matmul.c`) were rewritten 2026-07-31 to fix a real quantization-quality gap (one scale per row → one scale per 32-element block with error-minimizing search — see `docs/ai/decision-log.md`, [GitHub issue #27](https://github.com/sherwin-casem/project-zero/issues/27)). That rewrite dropped the VNNI `dpbusds`/VBMI fast paths (their row-wide bias-correction trick doesn't hold once every block has its own scale) in favor of a portable per-block FMA path — the specific SSE-interleave-unpack throughput issue this row used to describe no longer applies to the current code, but the *net* throughput effect of the whole rewrite hasn't been re-measured against the historical sweep above. | Confirm INT8/INT4 throughput post-fix; a genuine multi-row/multi-block SIMD kernel (not full VNNI dpbusds, which the new per-block scaling structurally can't reuse) could recover some of the dropped throughput without regressing quality |
 
 Existing SIMD work documented in [`docs/KERNEL_INTERNALS.md`](docs/KERNEL_INTERNALS.md).
-MoE repacking thread: [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1)
+MoE repacking thread: [Discussion #1](https://github.com/sherwin-casem/project-zero/discussions/1)
 
 ---
 

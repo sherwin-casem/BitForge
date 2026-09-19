@@ -1,6 +1,6 @@
 # Test Execution Report — project-zero
 **Status:** [TO FIX] — Unmitigated risks identified  
-**Repository:** https://github.com/shifulegend/project-zero  
+**Repository:** https://github.com/sherwin-casem/project-zero  
 **Engine:** CPU LLM Ternary Inference Engine (C99)  
 **Execution Date:** March 13, 2026  
 **Policy:** Zero-Trust — all tests written from scratch, existing tests treated as untrusted  
@@ -293,4 +293,4 @@ It is registered in CMake and runs as test #19 under `ctest`.
 ---
 
 *End of Report — Prepared under Zero-Trust policy. Total: 3,367 tests executed, 3,367 passed, 0 failed, 0 ASAN/UBSAN violations.*  
-*Source: https://github.com/shifulegend/project-zero*
+*Source: https://github.com/sherwin-casem/project-zero*

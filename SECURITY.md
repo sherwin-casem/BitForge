@@ -11,7 +11,7 @@
 
 **Please do NOT open a public GitHub issue for security vulnerabilities.**
 
-To report a security vulnerability, please open a **[GitHub Security Advisory](https://github.com/shifulegend/project-zero/security/advisories/new)** (private disclosure).
+To report a security vulnerability, please open a **[GitHub Security Advisory](https://github.com/sherwin-casem/project-zero/security/advisories/new)** (private disclosure).
 
 Include:
 - Description of the vulnerability

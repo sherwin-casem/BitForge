@@ -8,7 +8,7 @@ Thank you for your interest in contributing! Project Zero is a from-scratch CPU-
 
 1. **Read [`GOLDEN_RULES.md`](GOLDEN_RULES.md)** — mandatory for all contributors and AI agents. No hardcoding, test after every change, document every step.
 2. **Read [`DEVELOPER_ONBOARDING.md`](DEVELOPER_ONBOARDING.md)** — architecture overview, testing protocol, branching strategy.
-3. **Check open Discussions** — especially [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) (MoE help wanted) and [Discussion #2](https://github.com/shifulegend/project-zero/discussions/2) (phase roadmap).
+3. **Check open Discussions** — especially [Discussion #1](https://github.com/sherwin-casem/project-zero/discussions/1) (MoE help wanted) and [Discussion #2](https://github.com/sherwin-casem/project-zero/discussions/2) (phase roadmap).
 
 ---
 
@@ -60,8 +60,8 @@ The full phase roadmap is at [`.github/ROADMAP.md`](.github/ROADMAP.md). The two
 
 | Area | Current state | Target | Discussion | Skill needed |
 |---|---|---|---|---|
-| **MoE expert weight repacking** | DeepSeek MoE at ~1 tok/s — 86% L3 miss rate due to non-contiguous expert offsets in GGUF | ≥ 9 tok/s | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) | C, GGUF Q4_K layout, memory layout |
-| **Native Q4_K matmul kernel** | Dense layers dequant Q4_K → FP32 before matmul | 4× speedup on DeepSeek dense layers | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) | C, AVX-512 intrinsics |
+| **MoE expert weight repacking** | DeepSeek MoE at ~1 tok/s — 86% L3 miss rate due to non-contiguous expert offsets in GGUF | ≥ 9 tok/s | [Discussion #1](https://github.com/sherwin-casem/project-zero/discussions/1) | C, GGUF Q4_K layout, memory layout |
+| **Native Q4_K matmul kernel** | Dense layers dequant Q4_K → FP32 before matmul | 4× speedup on DeepSeek dense layers | [Discussion #1](https://github.com/sherwin-casem/project-zero/discussions/1) | C, AVX-512 intrinsics |
 
 See [`MOE_RESEARCH_AND_FIX_PLAN.md`](docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md) for 8 previous fix attempts (P1–P8) with profiling data — read this before starting on expert repacking.
 
@@ -112,7 +112,7 @@ These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](docs/architectu
 
 ## 💬 Questions?
 
-Open a [Discussion](https://github.com/shifulegend/project-zero/discussions) — we prefer discussions over issues for questions.
+Open a [Discussion](https://github.com/sherwin-casem/project-zero/discussions) — we prefer discussions over issues for questions.
 
 ---
 

@@ -4,7 +4,7 @@
 > Update after each meaningful sub-step. Last updated: 2026-08-04.
 
 ### 2026-08-04 — DeepSeek MoE benchmark run: project-zero vs colibri vs llama.cpp
-- What: user asked to run DeepSeek MoE on project-zero, colibri (`shifulegend/colibri`), and
+- What: user asked to run DeepSeek MoE on project-zero, colibri (`sherwin-casem/colibri`), and
   llama.cpp and report results. Found colibri has no DeepSeek-arch loader (only GLM-5.2/Inkling/
   Kimi K3/OLMoE, one engine per family — DeepSeek referenced only as prior-art in `colibri.c`)
   and project-zero has no OLMoE-arch loader (`gguf_loader.c`'s MoE dispatch only special-cases

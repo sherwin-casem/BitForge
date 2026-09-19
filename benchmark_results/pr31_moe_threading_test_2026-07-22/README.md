@@ -1,6 +1,6 @@
 # PR #31 verification — `--moe-threading=rowsplit` vs `=legacy`
 
-**Date:** 2026-07-22 · **PR under test:** [#31](https://github.com/shifulegend/project-zero/pull/31) (`Amlaach/project-zero@fba3225`)
+**Date:** 2026-07-22 · **PR under test:** [#31](https://github.com/sherwin-casem/project-zero/pull/31) (`Amlaach/project-zero@fba3225`)
 
 ## Setup
 

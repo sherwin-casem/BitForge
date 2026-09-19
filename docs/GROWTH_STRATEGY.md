@@ -29,7 +29,7 @@ Project Zero is a pure-C CPU LLM engine. On an Intel Xeon (2.10 GHz, AVX-512 VNN
 the same binary hits 40.4 tok/s on BitNet b1.58-2B-4T and 142 tok/s on SmolLM2-135M.
 
 Run it on YOUR CPU and drop your numbers here:
-    git clone https://github.com/shifulegend/project-zero && cd project-zero && make demo
+    git clone https://github.com/sherwin-casem/project-zero && cd project-zero && make demo
 
 Please include: CPU model, core/thread count, RAM type, the `[gen] … tok/s` line,
 and the auto-detected SIMD backend. I'll keep a leaderboard table in this thread.

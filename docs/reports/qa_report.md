@@ -5,7 +5,7 @@
 ---
 
 **Prepared by:** Independent Principal QA Architect / Senior Software Security Auditor  
-**Repository:** https://github.com/shifulegend/project-zero  
+**Repository:** https://github.com/sherwin-casem/project-zero  
 **Language / Runtime:** Pure C99, POSIX + Win32 abstraction, zero external runtime dependencies  
 **Assessed Phases:** 0–9 (Phases 10+ planned but not implemented)  
 **Policy:** Zero-Trust — all tests designed from first principles; no existing test artefacts consulted

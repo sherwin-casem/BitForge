@@ -1,6 +1,6 @@
 # Security and Functional Test Report: project-zero
 
-**Repository:** https://github.com/shifulegend/project-zero.git
+**Repository:** https://github.com/sherwin-casem/project-zero.git
 **Assessment Date:** 2026-03-12 (updated)
 **Branch assessed:** `master`
 **HEAD commit:** See latest commit on branch
